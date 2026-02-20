@@ -89,6 +89,63 @@ export default function ChatsPage() {
     [activeChatId, chats],
   );
 
+  function canUseMediaDevices() {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return false;
+    }
+    return (
+      window.isSecureContext &&
+      Boolean(
+        navigator.mediaDevices &&
+          typeof navigator.mediaDevices.getUserMedia === 'function',
+      )
+    );
+  }
+
+  function toFriendlyMediaError(error: unknown) {
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      return 'Звонки доступны только по HTTPS. Открой сайт по защищённому адресу.';
+    }
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      return 'Браузер не поддерживает доступ к микрофону/камере.';
+    }
+
+    const errorName =
+      error && typeof error === 'object' && 'name' in error
+        ? String((error as { name?: string }).name)
+        : '';
+
+    if (errorName === 'NotAllowedError') {
+      return 'Доступ к микрофону/камере запрещён. Разреши доступ в браузере.';
+    }
+    if (errorName === 'NotFoundError') {
+      return 'Микрофон или камера не найдены на устройстве.';
+    }
+    if (errorName === 'NotReadableError') {
+      return 'Устройство занято другим приложением.';
+    }
+
+    return 'Не удалось получить доступ к микрофону/камере.';
+  }
+
+  async function requestLocalMedia(type: CallType) {
+    if (!canUseMediaDevices()) {
+      throw new Error(
+        'Звонки доступны только по HTTPS и при разрешённом доступе к устройствам.',
+      );
+    }
+
+    return navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: type === 'video',
+    });
+  }
+
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
@@ -470,10 +527,7 @@ export default function ChatsPage() {
 
     setCallInfo(type === 'video' ? 'Запуск видеозвонка...' : 'Запуск аудиозвонка...');
     try {
-      const media = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: type === 'video',
-      });
+      const media = await requestLocalMedia(type);
       localStreamRef.current = media;
       remoteStreamRef.current = new MediaStream();
       setMediaRefs();
@@ -498,8 +552,8 @@ export default function ChatsPage() {
       setCallInfo('Ожидание ответа...');
     } catch (error) {
       cleanupCallState();
-      setCallInfo('Не удалось получить доступ к микрофону/камере');
-      setError(error instanceof Error ? error.message : 'Ошибка звонка');
+      setCallInfo(toFriendlyMediaError(error));
+      setError(toFriendlyMediaError(error));
     }
   }
 
@@ -509,10 +563,7 @@ export default function ChatsPage() {
     }
 
     try {
-      const media = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: incomingCall.type === 'video',
-      });
+      const media = await requestLocalMedia(incomingCall.type);
       localStreamRef.current = media;
       remoteStreamRef.current = new MediaStream();
       setMediaRefs();
@@ -541,7 +592,7 @@ export default function ChatsPage() {
     } catch (error) {
       cleanupCallState();
       setCallInfo('Не удалось принять звонок');
-      setError(error instanceof Error ? error.message : 'Ошибка звонка');
+      setError(toFriendlyMediaError(error));
     }
   }
 
@@ -763,19 +814,25 @@ export default function ChatsPage() {
                 <button
                   type="button"
                   onClick={() => onStartCall('audio')}
-                  disabled={inCall}
+                  disabled={inCall || !canUseMediaDevices()}
                 >
                   Аудио
                 </button>
                 <button
                   type="button"
                   onClick={() => onStartCall('video')}
-                  disabled={inCall}
+                  disabled={inCall || !canUseMediaDevices()}
                 >
                   Видео
                 </button>
               </div>
             </header>
+
+            {!canUseMediaDevices() ? (
+              <p className="muted">
+                Звонки доступны только по HTTPS. Сейчас открыт небезопасный режим.
+              </p>
+            ) : null}
 
             {(incomingCall || inCall || callInfo) && (
               <section className="call-panel">
