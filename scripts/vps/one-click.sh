@@ -8,6 +8,7 @@ REGISTRATION_MODE="${KORBIT_REGISTRATION_MODE:-invite}"
 HOST="${KORBIT_HOST:-}"
 ENABLE_SSL="${KORBIT_ENABLE_SSL:-false}"
 LETSENCRYPT_EMAIL="${KORBIT_LETSENCRYPT_EMAIL:-}"
+IP_SSL_DOMAIN="${KORBIT_IP_SSL_DOMAIN:-nip.io}"
 ADMIN_USERNAME="${KORBIT_ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${KORBIT_ADMIN_PASSWORD:-}"
 
@@ -208,7 +209,7 @@ configure_env_file() {
   fi
 
   if [[ "${ENABLE_SSL}" == "true" ]] && is_ipv4 "${HOST}"; then
-    HOST="${HOST}.sslip.io"
+    HOST="${HOST}.${IP_SSL_DOMAIN}"
     log "KORBIT_ENABLE_SSL=true with IP detected. Using ${HOST} for automatic TLS certificate."
   fi
 

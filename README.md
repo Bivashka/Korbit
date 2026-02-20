@@ -30,9 +30,18 @@ env KORBIT_HOST=chat.example.com \
     bash
 ```
 
-No domain yet? Run with only SSL flag and script will auto-use `<YOUR_PUBLIC_IP>.sslip.io`:
+No domain yet? Run with only SSL flag and script will auto-use `<YOUR_PUBLIC_IP>.nip.io`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | \
 env KORBIT_ENABLE_SSL=true bash
+```
+
+You can override the fallback DNS zone if needed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | \
+env KORBIT_ENABLE_SSL=true \
+    KORBIT_IP_SSL_DOMAIN=sslip.io \
+    bash
 ```

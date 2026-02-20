@@ -38,6 +38,7 @@ Optional variables:
 - `KORBIT_REGISTRATION_MODE` (default `invite`)
 - `KORBIT_ADMIN_USERNAME` (default `admin`)
 - `KORBIT_ADMIN_PASSWORD` (if omitted, auto-generated)
+- `KORBIT_IP_SSL_DOMAIN` (default `nip.io`, used when SSL is enabled and host is IP)
 
 If you only have an IP and no domain:
 
@@ -46,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/on
 env KORBIT_ENABLE_SSL=true bash
 ```
 
-In this mode the script automatically uses `<PUBLIC_IP>.sslip.io` for Let's Encrypt.
+In this mode the script automatically uses `<PUBLIC_IP>.nip.io` for Let's Encrypt.
 
 ## Check service state
 
