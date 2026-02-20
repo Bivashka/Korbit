@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateDirectChatDto } from './dto/create-direct-chat.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
+import { SearchMessagesQueryDto } from './dto/search-messages-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 
@@ -219,6 +220,35 @@ export class ChatsService {
       items: [...messages].reverse(),
       nextCursor: messages.length === limit ? messages[messages.length - 1].id : null,
     };
+  }
+
+  async searchMessages(
+    userId: string,
+    chatId: string,
+    query: SearchMessagesQueryDto,
+  ) {
+    await this.assertMember(chatId, userId);
+
+    const text = query.q.trim();
+    if (!text) {
+      throw new BadRequestException('Пустой поисковый запрос');
+    }
+
+    return this.prisma.message.findMany({
+      where: {
+        chatId,
+        isDeleted: false,
+        content: {
+          contains: text,
+          mode: 'insensitive',
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: query.limit ?? 20,
+      include: this.messageInclude(),
+    });
   }
 
   async sendMessage(userId: string, chatId: string, dto: SendMessageDto) {

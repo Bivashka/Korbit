@@ -16,6 +16,7 @@ import {
   logout,
   markRead,
   pinMessage,
+  searchMessages,
   sendMessage,
   toggleReaction,
   unpinMessage,
@@ -70,6 +71,8 @@ export default function ChatsPage() {
   const activeChatIdRef = useRef<string | null>(null);
   const incomingCallRef = useRef<IncomingCall | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageElementsRef = useRef<Record<string, HTMLElement | null>>({});
+  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -101,6 +104,12 @@ export default function ChatsPage() {
     null,
   );
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [forwardTargetChatId, setForwardTargetChatId] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchResults, setSearchResults] = useState<MessageItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [callType, setCallType] = useState<CallType | null>(null);
@@ -235,10 +244,17 @@ export default function ChatsPage() {
     setReplyToMessage((previous) =>
       previous && previous.chatId === activeChatId ? previous : null,
     );
+    setForwardTargetChatId(activeChatId ?? null);
     setEditingMessageId((previous) =>
       previous && messages.some((item) => item.id === previous) ? previous : null,
     );
   }, [activeChatId, messages]);
+
+  useEffect(() => {
+    setSearchInput('');
+    setSearchResults([]);
+    setHighlightedMessageId(null);
+  }, [activeChatId]);
 
   useEffect(() => {
     if (inCall) {
@@ -566,6 +582,9 @@ export default function ChatsPage() {
     return () => {
       stopRecording();
       stopRecorderStream();
+      if (noticeTimeoutRef.current) {
+        clearTimeout(noticeTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -599,12 +618,18 @@ export default function ChatsPage() {
   function upsertLocalMessage(message: MessageItem) {
     setMessages((previous) => {
       const existingIndex = previous.findIndex((item) => item.id === message.id);
+      let next: MessageItem[];
       if (existingIndex >= 0) {
-        const next = [...previous];
+        next = [...previous];
         next[existingIndex] = message;
-        return next;
+      } else {
+        next = [...previous, message];
       }
-      return [...previous, message];
+      next.sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+      );
+      return next;
     });
     setChats((previous) => {
       const existing = previous.find((chat) => chat.id === message.chatId);
@@ -662,6 +687,63 @@ export default function ChatsPage() {
           : chat,
       ),
     );
+  }
+
+  function showNotice(text: string) {
+    setNotice(text);
+    if (noticeTimeoutRef.current) {
+      clearTimeout(noticeTimeoutRef.current);
+    }
+    noticeTimeoutRef.current = setTimeout(() => {
+      setNotice(null);
+    }, 2600);
+  }
+
+  function jumpToMessage(messageId: string) {
+    setHighlightedMessageId(messageId);
+    const node = messageElementsRef.current[messageId];
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    window.setTimeout(() => {
+      setHighlightedMessageId((previous) =>
+        previous === messageId ? null : previous,
+      );
+    }, 2200);
+  }
+
+  async function onSearchInChat(event: FormEvent) {
+    event.preventDefault();
+    if (!activeChatId) {
+      return;
+    }
+
+    const query = searchInput.trim();
+    if (!query) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    setError(null);
+    try {
+      const found = await searchMessages(activeChatId, query, 20);
+      setSearchResults(found);
+      if (found.length === 0) {
+        showNotice('Ничего не найдено');
+      }
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка поиска');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function onOpenSearchResult(message: MessageItem) {
+    upsertLocalMessage(message);
+    requestAnimationFrame(() => {
+      jumpToMessage(message.id);
+    });
   }
 
   async function onSendMessage(event: FormEvent) {
@@ -739,6 +821,7 @@ export default function ChatsPage() {
       return;
     }
     setForwardSourceMessage(message);
+    setForwardTargetChatId(activeChatIdRef.current ?? null);
     setReplyToMessage(null);
     setEditingMessageId(null);
   }
@@ -765,7 +848,7 @@ export default function ChatsPage() {
   }
 
   async function onForwardToActiveChat() {
-    if (!activeChatId || !forwardSourceMessage) {
+    if (!forwardSourceMessage || !forwardTargetChatId) {
       return;
     }
 
@@ -774,10 +857,18 @@ export default function ChatsPage() {
       const created = await forwardMessage(
         forwardSourceMessage.chatId,
         forwardSourceMessage.id,
-        activeChatId,
+        forwardTargetChatId,
       );
-      upsertLocalMessage(created);
+      if (forwardTargetChatId === activeChatIdRef.current) {
+        upsertLocalMessage(created);
+      } else {
+        const targetChat = chats.find((chat) => chat.id === forwardTargetChatId);
+        showNotice(
+          `Переслано в "${targetChat ? chatTitle(targetChat) : 'другой чат'}"`,
+        );
+      }
       setForwardSourceMessage(null);
+      setForwardTargetChatId(activeChatIdRef.current ?? null);
     } catch (rawError) {
       setError(rawError instanceof Error ? rawError.message : 'Ошибка пересылки сообщения');
     }
@@ -1284,6 +1375,16 @@ export default function ChatsPage() {
           <>
             <header className="chat-main-header">
               <h3>{chatTitle(activeChat)}</h3>
+              <form className="chat-search" onSubmit={onSearchInChat}>
+                <input
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Поиск по сообщениям"
+                />
+                <button type="submit" disabled={searching}>
+                  {searching ? '...' : 'Найти'}
+                </button>
+              </form>
               <div className="call-actions">
                 <span className="muted">{formatStatus(activeChat.peer?.id)}</span>
                 <button
@@ -1322,6 +1423,42 @@ export default function ChatsPage() {
                 >
                   Открепить
                 </button>
+              </section>
+            ) : null}
+
+            {searchInput.trim() ? (
+              <section className="search-results">
+                <div className="search-results-header">
+                  <strong>Результаты поиска</strong>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      setSearchInput('');
+                      setSearchResults([]);
+                    }}
+                  >
+                    Скрыть
+                  </button>
+                </div>
+                {searchResults.length === 0 ? (
+                  <p className="muted">Совпадений пока нет</p>
+                ) : (
+                  <div className="search-results-list">
+                    {searchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        type="button"
+                        className="search-result-item"
+                        onClick={() => onOpenSearchResult(result)}
+                      >
+                        <strong>{messageAuthorLabel(result)}</strong>
+                        <span>{messageSnippet(result.content)}</span>
+                        <small>{new Date(result.createdAt).toLocaleString()}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </section>
             ) : null}
 
@@ -1401,7 +1538,12 @@ export default function ChatsPage() {
                 return (
                   <article
                     key={message.id}
-                    className={`message ${own ? 'own' : 'peer'}`}
+                    ref={(element) => {
+                      messageElementsRef.current[message.id] = element;
+                    }}
+                    className={`message ${own ? 'own' : 'peer'} ${
+                      highlightedMessageId === message.id ? 'highlighted-message' : ''
+                    }`}
                   >
                     {message.forwardedFromMessage ? (
                       <div className="message-meta-quote">
@@ -1477,16 +1619,14 @@ export default function ChatsPage() {
                       >
                         Переслать
                       </button>
-                      {canManage ? (
-                        <button
-                          type="button"
-                          className="link-button"
-                          onClick={() => void onPinMessage(message)}
-                          disabled={message.isDeleted}
-                        >
-                          Закрепить
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => void onPinMessage(message)}
+                        disabled={message.isDeleted}
+                      >
+                        Закрепить
+                      </button>
                       {canManage ? (
                         <button
                           type="button"
@@ -1561,12 +1701,31 @@ export default function ChatsPage() {
                   <p>{messageSnippet(forwardSourceMessage.content)}</p>
                 </div>
                 <div className="composer-context-actions">
+                  <label className="forward-target-field">
+                    <span className="muted">Куда</span>
+                    <select
+                      className="forward-target-select"
+                      value={forwardTargetChatId ?? ''}
+                      onChange={(event) =>
+                        setForwardTargetChatId(event.target.value || null)
+                      }
+                    >
+                      <option value="" disabled>
+                        Выберите чат
+                      </option>
+                      {chats.map((chat) => (
+                        <option key={chat.id} value={chat.id}>
+                          {chatTitle(chat)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <button
                     type="button"
                     onClick={() => void onForwardToActiveChat()}
-                    disabled={uploading}
+                    disabled={uploading || !forwardTargetChatId}
                   >
-                    Переслать сюда
+                    {forwardTargetChatId === activeChatId ? 'Переслать сюда' : 'Переслать'}
                   </button>
                   <button
                     type="button"
@@ -1651,6 +1810,9 @@ export default function ChatsPage() {
         )}
       </section>
 
+      {notice ? (
+        <p className={`floating-notice ${error ? 'with-error' : ''}`}>{notice}</p>
+      ) : null}
       {error ? <p className="error floating-error">{error}</p> : null}
     </main>
   );

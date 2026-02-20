@@ -25,6 +25,7 @@ import { CreateDirectChatDto } from './dto/create-direct-chat.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
+import { SearchMessagesQueryDto } from './dto/search-messages-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { ToggleReactionDto } from './dto/toggle-reaction.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
@@ -57,6 +58,15 @@ export class ChatsController {
     @Query() query: ListMessagesQueryDto,
   ) {
     return this.chatsService.listMessages(user.sub, chatId, query);
+  }
+
+  @Get(':chatId/messages/search')
+  searchMessages(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Query() query: SearchMessagesQueryDto,
+  ) {
+    return this.chatsService.searchMessages(user.sub, chatId, query);
   }
 
   @Post(':chatId/messages')

@@ -210,6 +210,14 @@ export async function listMessages(chatId: string, cursor?: string) {
   );
 }
 
+export async function searchMessages(chatId: string, query: string, limit = 20) {
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+  });
+  return request<MessageItem[]>(`/chats/${chatId}/messages/search?${params.toString()}`);
+}
+
 export async function sendMessage(
   chatId: string,
   content: string,
