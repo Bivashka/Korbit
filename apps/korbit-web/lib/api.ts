@@ -70,7 +70,8 @@ export async function request<T>(
 ): Promise<T> {
   const withAuth = options.withAuth ?? true;
   const headers: Record<string, string> = {};
-  if (options.contentType !== 'omit') {
+  const hasBody = typeof options.body !== 'undefined';
+  if (options.contentType !== 'omit' && hasBody) {
     headers['Content-Type'] = options.contentType ?? 'application/json';
   }
 
@@ -85,7 +86,7 @@ export async function request<T>(
   const response = await fetch(`${API_URL}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: hasBody ? JSON.stringify(options.body) : undefined,
   });
 
   if (response.status === 401 && withAuth && retry) {

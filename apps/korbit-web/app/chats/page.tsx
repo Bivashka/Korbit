@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -73,6 +73,10 @@ export default function ChatsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLElement | null>>({});
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const screenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const cameraTrackBeforeShareRef = useRef<MediaStreamTrack | null>(null);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -108,20 +112,38 @@ export default function ChatsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchResults, setSearchResults] = useState<MessageItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchExecuted, setSearchExecuted] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    messageId: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [callType, setCallType] = useState<CallType | null>(null);
   const [inCall, setInCall] = useState(false);
   const [callMuted, setCallMuted] = useState(false);
-  const [callCameraEnabled, setCallCameraEnabled] = useState(true);
+  const [callCameraEnabled, setCallCameraEnabled] = useState(false);
+  const [screenSharing, setScreenSharing] = useState(false);
   const [callInfo, setCallInfo] = useState<string | null>(null);
   const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
     [activeChatId, chats],
+  );
+  const contextMenuMessage = useMemo(
+    () =>
+      contextMenu
+        ? messages.find((message) => message.id === contextMenu.messageId) ?? null
+        : null,
+    [contextMenu, messages],
+  );
+  const contextMenuCanManage = Boolean(
+    contextMenuMessage &&
+      (contextMenuMessage.senderId === me?.id || me?.role === 'ADMIN'),
   );
 
   function canUseMediaDevices() {
@@ -166,6 +188,73 @@ export default function ChatsPage() {
     }
 
     return 'Не удалось получить доступ к микрофону/камере.';
+  }
+
+  function clearCallTone() {
+    if (callToneIntervalRef.current) {
+      clearInterval(callToneIntervalRef.current);
+      callToneIntervalRef.current = null;
+    }
+  }
+
+  function playTone(kind: 'message' | 'call') {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const AudioContextClass = window.AudioContext;
+    if (!AudioContextClass) {
+      return;
+    }
+
+    const context = audioContextRef.current ?? new AudioContextClass();
+    audioContextRef.current = context;
+
+    if (context.state === 'suspended') {
+      void context.resume().catch(() => undefined);
+    }
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+
+    oscillator.frequency.value = kind === 'call' ? 910 : 640;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.24);
+  }
+
+  function startCallTone() {
+    playTone('call');
+    clearCallTone();
+    callToneIntervalRef.current = setInterval(() => {
+      playTone('call');
+    }, 1800);
+  }
+
+  function showBrowserNotification(title: string, body: string) {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return;
+    }
+    if (Notification.permission !== 'granted') {
+      return;
+    }
+    try {
+      const notification = new Notification(title, {
+        body,
+        tag: `korbit-${title}`,
+      });
+      setTimeout(() => {
+        notification.close();
+      }, 4500);
+    } catch {
+      // ignore notification errors in unsupported environments
+    }
   }
 
   async function requestLocalMedia(type: CallType) {
@@ -253,7 +342,9 @@ export default function ChatsPage() {
   useEffect(() => {
     setSearchInput('');
     setSearchResults([]);
+    setSearchExecuted(false);
     setHighlightedMessageId(null);
+    setContextMenu(null);
   }, [activeChatId]);
 
   useEffect(() => {
@@ -261,6 +352,38 @@ export default function ChatsPage() {
       setMediaRefs();
     }
   }, [inCall, callType]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return;
+    }
+    if (Notification.permission === 'default') {
+      void Notification.requestPermission().catch(() => undefined);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const onWindowClick = () => setContextMenu(null);
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setContextMenu(null);
+      }
+    };
+
+    window.addEventListener('click', onWindowClick);
+    window.addEventListener('keydown', onEscape);
+    window.addEventListener('scroll', onWindowClick, true);
+
+    return () => {
+      window.removeEventListener('click', onWindowClick);
+      window.removeEventListener('keydown', onEscape);
+      window.removeEventListener('scroll', onWindowClick, true);
+    };
+  }, []);
 
   function setMediaRefs() {
     if (localVideoRef.current) {
@@ -288,8 +411,14 @@ export default function ChatsPage() {
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
 
+    clearCallTone();
     stopLocalStream();
     remoteStreamRef.current = null;
+    if (screenTrackRef.current) {
+      screenTrackRef.current.stop();
+      screenTrackRef.current = null;
+    }
+    cameraTrackBeforeShareRef.current = null;
     pendingIceCandidatesRef.current = [];
     currentCallChatIdRef.current = null;
     incomingCallRef.current = null;
@@ -297,7 +426,8 @@ export default function ChatsPage() {
     setInCall(false);
     setCallType(null);
     setCallMuted(false);
-    setCallCameraEnabled(true);
+    setCallCameraEnabled(false);
+    setScreenSharing(false);
     setMediaRefs();
   }
 
@@ -428,6 +558,9 @@ export default function ChatsPage() {
     socket.on(
       'new_message',
       (message: MessageItem & { createdAt: string; updatedAt: string }) => {
+        const isOwnMessage = message.senderId === me?.id;
+        const isActiveChat = message.chatId === activeChatIdRef.current;
+
         setChats((previous) => {
           const existing = previous.find((chat) => chat.id === message.chatId);
           if (!existing) {
@@ -437,12 +570,17 @@ export default function ChatsPage() {
           const updated: ChatItem = {
             ...existing,
             lastMessage: message,
+            unreadCount:
+              isOwnMessage || isActiveChat
+                ? 0
+                : Math.max(0, (existing.unreadCount ?? 0) + 1),
+            lastReadMessageId: isActiveChat ? message.id : existing.lastReadMessageId,
           };
           const rest = previous.filter((chat) => chat.id !== message.chatId);
           return [updated, ...rest];
         });
 
-        if (message.chatId === activeChatIdRef.current) {
+        if (isActiveChat) {
           setMessages((previous) => {
             const existingIndex = previous.findIndex((item) => item.id === message.id);
             if (existingIndex >= 0) {
@@ -453,6 +591,11 @@ export default function ChatsPage() {
             return [...previous, message];
           });
           void markRead(message.chatId, message.id).catch(() => undefined);
+        } else if (!isOwnMessage) {
+          playTone('message');
+          const peerName =
+            message.sender.displayName || message.sender.username || 'Новое сообщение';
+          showBrowserNotification(peerName, messageSnippet(message.content));
         }
       },
     );
@@ -485,10 +628,13 @@ export default function ChatsPage() {
     socket.on(
       'read_receipt',
       (event: { chatId: string; userId: string; messageId: string | null }) => {
+        if (event.userId !== me?.id) {
+          return;
+        }
         setChats((previous) =>
           previous.map((chat) =>
             chat.id === event.chatId
-              ? { ...chat, lastReadMessageId: event.messageId }
+              ? { ...chat, lastReadMessageId: event.messageId, unreadCount: 0 }
               : chat,
           ),
         );
@@ -509,7 +655,13 @@ export default function ChatsPage() {
       pendingIceCandidatesRef.current = [];
       setIncomingCall(event);
       incomingCallRef.current = event;
+      startCallTone();
       setCallInfo('Входящий звонок');
+
+      const chat = chats.find((item) => item.id === event.chatId);
+      const caller = chat?.peer?.displayName || chat?.peer?.username || 'Собеседник';
+      const callLabel = event.type === 'video' ? 'Видеозвонок' : 'Аудиозвонок';
+      showBrowserNotification(caller, callLabel);
     });
 
     socket.on('call_answer', async (event: CallAnswerEvent) => {
@@ -524,6 +676,7 @@ export default function ChatsPage() {
           new RTCSessionDescription(event.sdp),
         );
         await flushPendingIceCandidates();
+        clearCallTone();
         setInCall(true);
         setCallInfo('Звонок установлен');
       } catch {
@@ -557,10 +710,12 @@ export default function ChatsPage() {
 
     socket.on('call_end', (event: { chatId: string; senderId: string }) => {
       if (event.chatId === currentCallChatIdRef.current) {
+        clearCallTone();
         setCallInfo('Звонок завершён');
         cleanupCallState();
       }
       if (event.chatId === incomingCallRef.current?.chatId) {
+        clearCallTone();
         setIncomingCall(null);
         incomingCallRef.current = null;
         pendingIceCandidatesRef.current = [];
@@ -582,6 +737,11 @@ export default function ChatsPage() {
     return () => {
       stopRecording();
       stopRecorderStream();
+      clearCallTone();
+      if (audioContextRef.current) {
+        void audioContextRef.current.close().catch(() => undefined);
+        audioContextRef.current = null;
+      }
       if (noticeTimeoutRef.current) {
         clearTimeout(noticeTimeoutRef.current);
       }
@@ -639,6 +799,14 @@ export default function ChatsPage() {
       const updated: ChatItem = {
         ...existing,
         lastMessage: message,
+        lastReadMessageId:
+          message.chatId === activeChatIdRef.current
+            ? message.id
+            : existing.lastReadMessageId,
+        unreadCount:
+          message.chatId === activeChatIdRef.current || message.senderId === me?.id
+            ? 0
+            : existing.unreadCount,
       };
       const rest = previous.filter((chat) => chat.id !== message.chatId);
       return [updated, ...rest];
@@ -721,15 +889,41 @@ export default function ChatsPage() {
     const query = searchInput.trim();
     if (!query) {
       setSearchResults([]);
+      setSearchExecuted(false);
       return;
     }
 
     setSearching(true);
+    setSearchExecuted(true);
     setError(null);
     try {
-      const found = await searchMessages(activeChatId, query, 20);
-      setSearchResults(found);
-      if (found.length === 0) {
+      const foundRemote = await searchMessages(activeChatId, query, 20);
+      const loweredQuery = query.toLowerCase();
+      const foundLocal = messages.filter((message) => {
+        if (message.isDeleted) {
+          return false;
+        }
+        if (message.content.toLowerCase().includes(loweredQuery)) {
+          return true;
+        }
+        return (message.attachments ?? []).some((attachment) =>
+          attachment.fileName.toLowerCase().includes(loweredQuery),
+        );
+      });
+
+      const merged = [...foundRemote];
+      for (const localMessage of foundLocal) {
+        if (!merged.some((item) => item.id === localMessage.id)) {
+          merged.push(localMessage);
+        }
+      }
+      merged.sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      );
+
+      setSearchResults(merged);
+      if (merged.length === 0) {
         showNotice('Ничего не найдено');
       }
     } catch (rawError) {
@@ -801,6 +995,7 @@ export default function ChatsPage() {
   }
 
   function onReply(message: MessageItem) {
+    setContextMenu(null);
     setReplyToMessage(message);
     setForwardSourceMessage(null);
     setEditingMessageId(null);
@@ -810,6 +1005,7 @@ export default function ChatsPage() {
     if (message.isDeleted) {
       return;
     }
+    setContextMenu(null);
     setEditingMessageId(message.id);
     setReplyToMessage(null);
     setForwardSourceMessage(null);
@@ -820,10 +1016,34 @@ export default function ChatsPage() {
     if (message.isDeleted) {
       return;
     }
+    setContextMenu(null);
     setForwardSourceMessage(message);
     setForwardTargetChatId(activeChatIdRef.current ?? null);
     setReplyToMessage(null);
     setEditingMessageId(null);
+  }
+
+  function onMessageContextMenu(event: MouseEvent<HTMLElement>, messageId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({
+      messageId,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  function getContextMenuPosition() {
+    if (!contextMenu) {
+      return null;
+    }
+    if (typeof window === 'undefined') {
+      return { left: contextMenu.x, top: contextMenu.y };
+    }
+    return {
+      left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 260)),
+      top: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 340)),
+    };
   }
 
   async function onDeleteMessage(message: MessageItem) {
@@ -831,6 +1051,7 @@ export default function ChatsPage() {
       return;
     }
 
+    setContextMenu(null);
     setError(null);
     try {
       const updated = await deleteMessage(activeChatId, message.id);
@@ -852,6 +1073,7 @@ export default function ChatsPage() {
       return;
     }
 
+    setContextMenu(null);
     setError(null);
     try {
       const created = await forwardMessage(
@@ -879,6 +1101,7 @@ export default function ChatsPage() {
       return;
     }
 
+    setContextMenu(null);
     setError(null);
     try {
       const updated = await toggleReaction(activeChatId, message.id, emoji);
@@ -893,6 +1116,7 @@ export default function ChatsPage() {
       return;
     }
 
+    setContextMenu(null);
     setError(null);
     try {
       const result = await pinMessage(activeChatId, message.id);
@@ -907,6 +1131,7 @@ export default function ChatsPage() {
       return;
     }
 
+    setContextMenu(null);
     setError(null);
     try {
       await unpinMessage(activeChatId);
@@ -1030,6 +1255,8 @@ export default function ChatsPage() {
       const media = await requestLocalMedia(type);
       localStreamRef.current = media;
       remoteStreamRef.current = new MediaStream();
+      setCallCameraEnabled(Boolean(media.getVideoTracks()[0]?.enabled));
+      setScreenSharing(false);
       setMediaRefs();
 
       const connection = createPeerConnection(activeChatId);
@@ -1066,6 +1293,8 @@ export default function ChatsPage() {
       const media = await requestLocalMedia(incomingCall.type);
       localStreamRef.current = media;
       remoteStreamRef.current = new MediaStream();
+      setCallCameraEnabled(Boolean(media.getVideoTracks()[0]?.enabled));
+      setScreenSharing(false);
       setMediaRefs();
 
       const connection = createPeerConnection(incomingCall.chatId);
@@ -1087,6 +1316,7 @@ export default function ChatsPage() {
 
       setCallType(incomingCall.type);
       setInCall(true);
+      clearCallTone();
       setIncomingCall(null);
       incomingCallRef.current = null;
       setCallInfo('Звонок установлен');
@@ -1102,8 +1332,10 @@ export default function ChatsPage() {
       return;
     }
     socketRef.current.emit('call_end', { chatId: incomingCall.chatId });
+    clearCallTone();
     setIncomingCall(null);
     incomingCallRef.current = null;
+    pendingIceCandidatesRef.current = [];
     setCallInfo('Вызов отклонён');
   }
 
@@ -1130,17 +1362,155 @@ export default function ChatsPage() {
     setCallMuted(!audioTrack.enabled);
   }
 
-  function toggleCamera() {
+  async function toggleCamera() {
     const stream = localStreamRef.current;
-    if (!stream) {
+    const connection = peerConnectionRef.current;
+    if (!stream || !connection) {
       return;
     }
-    const videoTrack = stream.getVideoTracks()[0];
+
+    const videoTrack = stream
+      .getVideoTracks()
+      .find((track) => track !== screenTrackRef.current);
     if (!videoTrack) {
+      try {
+        const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const cameraTrack = cameraStream.getVideoTracks()[0];
+        if (!cameraTrack) {
+          return;
+        }
+
+        stream.addTrack(cameraTrack);
+        const videoSender = connection
+          .getSenders()
+          .find((sender) => sender.track?.kind === 'video');
+        if (videoSender) {
+          await videoSender.replaceTrack(cameraTrack);
+        } else {
+          connection.addTrack(cameraTrack, stream);
+        }
+        cameraTrackBeforeShareRef.current = cameraTrack;
+        setCallType('video');
+        setCallCameraEnabled(true);
+        setMediaRefs();
+      } catch (rawError) {
+        setError(toFriendlyMediaError(rawError));
+      }
       return;
     }
+
     videoTrack.enabled = !videoTrack.enabled;
     setCallCameraEnabled(videoTrack.enabled);
+    if (videoTrack.enabled) {
+      setCallType('video');
+    }
+  }
+
+  async function stopScreenShare() {
+    const connection = peerConnectionRef.current;
+    const stream = localStreamRef.current;
+    const screenTrack = screenTrackRef.current;
+    if (!connection || !stream || !screenTrack) {
+      setScreenSharing(false);
+      screenTrackRef.current = null;
+      return;
+    }
+
+    const videoSender = connection
+      .getSenders()
+      .find((sender) => sender.track?.kind === 'video');
+    const cameraTrack = cameraTrackBeforeShareRef.current;
+    if (videoSender) {
+      await videoSender.replaceTrack(
+        cameraTrack && cameraTrack.readyState === 'live' ? cameraTrack : null,
+      );
+    }
+
+    stream.removeTrack(screenTrack);
+    screenTrack.stop();
+    screenTrackRef.current = null;
+
+    if (cameraTrack && cameraTrack.readyState === 'live') {
+      cameraTrack.enabled = true;
+      if (!stream.getVideoTracks().includes(cameraTrack)) {
+        stream.addTrack(cameraTrack);
+      }
+      setCallCameraEnabled(true);
+      setCallType('video');
+    } else {
+      setCallCameraEnabled(false);
+      if (callType === 'video') {
+        setCallType('audio');
+      }
+    }
+
+    setScreenSharing(false);
+    setMediaRefs();
+  }
+
+  async function onToggleScreenShare() {
+    const connection = peerConnectionRef.current;
+    const stream = localStreamRef.current;
+    if (!inCall || !connection || !stream) {
+      return;
+    }
+
+    if (screenSharing) {
+      await stopScreenShare();
+      return;
+    }
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getDisplayMedia !== 'function'
+    ) {
+      setError('Браузер не поддерживает демонстрацию экрана');
+      return;
+    }
+
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      const displayTrack = screenStream.getVideoTracks()[0];
+      if (!displayTrack) {
+        return;
+      }
+
+      const currentCameraTrack = stream
+        .getVideoTracks()
+        .find((track) => track !== screenTrackRef.current) ?? null;
+      cameraTrackBeforeShareRef.current = currentCameraTrack;
+
+      const videoSender = connection
+        .getSenders()
+        .find((sender) => sender.track?.kind === 'video');
+      if (videoSender) {
+        await videoSender.replaceTrack(displayTrack);
+      } else {
+        connection.addTrack(displayTrack, stream);
+      }
+
+      if (currentCameraTrack) {
+        currentCameraTrack.enabled = false;
+        stream.removeTrack(currentCameraTrack);
+      }
+      stream.addTrack(displayTrack);
+
+      displayTrack.onended = () => {
+        void stopScreenShare();
+      };
+
+      screenTrackRef.current = displayTrack;
+      setCallType('video');
+      setCallCameraEnabled(true);
+      setScreenSharing(true);
+      setMediaRefs();
+    } catch (rawError) {
+      setError(toFriendlyMediaError(rawError));
+    }
   }
 
   async function onLogout() {
@@ -1233,6 +1603,51 @@ export default function ChatsPage() {
     return `${normalized.slice(0, 117)}...`;
   }
 
+  function attachmentLabel(attachment: AttachmentItem) {
+    if (attachment.mimeType.startsWith('image/')) {
+      return 'Фото';
+    }
+    if (attachment.mimeType.startsWith('audio/')) {
+      return attachment.fileName.startsWith('voice-message-')
+        ? 'Голосовое'
+        : 'Аудио';
+    }
+    if (attachment.mimeType.startsWith('video/')) {
+      return attachment.fileName.startsWith('video-note-') ? 'Кружок' : 'Видео';
+    }
+    return `Файл: ${attachment.fileName}`;
+  }
+
+  function hasAutoAttachmentCaption(
+    message: Pick<MessageItem, 'content' | 'attachments'>,
+  ) {
+    if (!message.attachments?.length) {
+      return false;
+    }
+    const normalized = message.content.trim();
+    if (!normalized) {
+      return true;
+    }
+    return (
+      normalized === 'Изображение' ||
+      normalized.startsWith('Файл: ') ||
+      normalized === 'Audio message' ||
+      normalized === 'Video note'
+    );
+  }
+
+  function chatPreview(chat: ChatItem) {
+    const lastMessage = chat.lastMessage;
+    if (!lastMessage) {
+      return 'Сообщений пока нет';
+    }
+    const firstAttachment = lastMessage.attachments?.[0];
+    if (firstAttachment) {
+      return attachmentLabel(firstAttachment);
+    }
+    return messageSnippet(lastMessage.content);
+  }
+
   function reactionSummary(message: MessageItem) {
     const counters = new Map<string, { count: number; own: boolean }>();
     for (const reaction of message.reactions ?? []) {
@@ -1280,7 +1695,6 @@ export default function ChatsPage() {
             return (
               <div key={attachment.id} className="attachment-media">
                 <audio controls preload="metadata" src={attachment.url} className="audio-player" />
-                <span className="muted">{attachment.fileName}</span>
               </div>
             );
           }
@@ -1295,7 +1709,6 @@ export default function ChatsPage() {
                   src={attachment.url}
                   className={isVideoNote ? 'video-note-player' : 'video-player'}
                 />
-                <span className="muted">{attachment.fileName}</span>
               </div>
             );
           }
@@ -1357,10 +1770,15 @@ export default function ChatsPage() {
               onClick={() => setActiveChatId(chat.id)}
               type="button"
             >
-              <strong>{chatTitle(chat)}</strong>
+              <div className="chat-item-row">
+                <strong>{chatTitle(chat)}</strong>
+                {chat.unreadCount > 0 ? (
+                  <span className="unread-badge">{chat.unreadCount}</span>
+                ) : null}
+              </div>
               <span className="muted">{formatStatus(chat.peer?.id)}</span>
               <span className="preview">
-                {chat.lastMessage?.content ?? 'Сообщений пока нет'}
+                {chatPreview(chat)}
               </span>
             </button>
           ))}
@@ -1426,7 +1844,7 @@ export default function ChatsPage() {
               </section>
             ) : null}
 
-            {searchInput.trim() ? (
+            {searchExecuted ? (
               <section className="search-results">
                 <div className="search-results-header">
                   <strong>Результаты поиска</strong>
@@ -1436,6 +1854,7 @@ export default function ChatsPage() {
                     onClick={() => {
                       setSearchInput('');
                       setSearchResults([]);
+                      setSearchExecuted(false);
                     }}
                   >
                     Скрыть
@@ -1490,11 +1909,12 @@ export default function ChatsPage() {
                     <button type="button" onClick={toggleMute}>
                       {callMuted ? 'Включить микрофон' : 'Выключить микрофон'}
                     </button>
-                    {callType === 'video' ? (
-                      <button type="button" onClick={toggleCamera}>
-                        {callCameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
-                      </button>
-                    ) : null}
+                    <button type="button" onClick={() => void toggleCamera()}>
+                      {callCameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+                    </button>
+                    <button type="button" onClick={() => void onToggleScreenShare()}>
+                      {screenSharing ? 'Остановить демонстрацию' : 'Демонстрация экрана'}
+                    </button>
                     <button type="button" onClick={onEndCall}>
                       Завершить
                     </button>
@@ -1533,7 +1953,6 @@ export default function ChatsPage() {
             <div className="messages">
               {messages.map((message) => {
                 const own = message.senderId === me?.id;
-                const canManage = own || me?.role === 'ADMIN';
                 const reactionsView = reactionSummary(message);
                 return (
                   <article
@@ -1541,6 +1960,7 @@ export default function ChatsPage() {
                     ref={(element) => {
                       messageElementsRef.current[message.id] = element;
                     }}
+                    onContextMenu={(event) => onMessageContextMenu(event, message.id)}
                     className={`message ${own ? 'own' : 'peer'} ${
                       highlightedMessageId === message.id ? 'highlighted-message' : ''
                     }`}
@@ -1569,7 +1989,7 @@ export default function ChatsPage() {
                       </div>
                     ) : null}
 
-                    <p>{message.content}</p>
+                    {!hasAutoAttachmentCaption(message) ? <p>{message.content}</p> : null}
                     {renderAttachments(message.attachments)}
 
                     {reactionsView.length > 0 ? (
@@ -1588,67 +2008,6 @@ export default function ChatsPage() {
                       </div>
                     ) : null}
 
-                    <div className="message-actions">
-                      {!message.isDeleted ? (
-                        <div className="quick-reactions">
-                          {QUICK_REACTIONS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              className="link-button"
-                              onClick={() => void onToggleReaction(message, emoji)}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="link-button"
-                        onClick={() => onReply(message)}
-                        disabled={message.isDeleted}
-                      >
-                        Ответить
-                      </button>
-                      <button
-                        type="button"
-                        className="link-button"
-                        onClick={() => onForwardSelect(message)}
-                        disabled={message.isDeleted}
-                      >
-                        Переслать
-                      </button>
-                      <button
-                        type="button"
-                        className="link-button"
-                        onClick={() => void onPinMessage(message)}
-                        disabled={message.isDeleted}
-                      >
-                        Закрепить
-                      </button>
-                      {canManage ? (
-                        <button
-                          type="button"
-                          className="link-button"
-                          onClick={() => onEditMessage(message)}
-                          disabled={message.isDeleted}
-                        >
-                          Изменить
-                        </button>
-                      ) : null}
-                      {canManage ? (
-                        <button
-                          type="button"
-                          className="link-button danger-link"
-                          onClick={() => void onDeleteMessage(message)}
-                          disabled={message.isDeleted}
-                        >
-                          Удалить
-                        </button>
-                      ) : null}
-                    </div>
-
                     <small>
                       {messageAuthorLabel(message)}
                       {message.editedAt ? ' (изменено)' : ''} |{' '}
@@ -1658,6 +2017,74 @@ export default function ChatsPage() {
                 );
               })}
             </div>
+
+            {contextMenu && contextMenuMessage ? (
+              <div
+                className="message-context-menu"
+                style={getContextMenuPosition() ?? undefined}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {!contextMenuMessage.isDeleted ? (
+                  <div className="message-context-reactions">
+                    {QUICK_REACTIONS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className="link-button"
+                        onClick={() => void onToggleReaction(contextMenuMessage, emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => onReply(contextMenuMessage)}
+                  disabled={contextMenuMessage.isDeleted}
+                >
+                  Ответить
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => onForwardSelect(contextMenuMessage)}
+                  disabled={contextMenuMessage.isDeleted}
+                >
+                  Переслать
+                </button>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => void onPinMessage(contextMenuMessage)}
+                  disabled={contextMenuMessage.isDeleted}
+                >
+                  Закрепить
+                </button>
+                {contextMenuCanManage ? (
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => onEditMessage(contextMenuMessage)}
+                    disabled={contextMenuMessage.isDeleted}
+                  >
+                    Изменить
+                  </button>
+                ) : null}
+                {contextMenuCanManage ? (
+                  <button
+                    type="button"
+                    className="link-button danger-link"
+                    onClick={() => void onDeleteMessage(contextMenuMessage)}
+                    disabled={contextMenuMessage.isDeleted}
+                  >
+                    Удалить
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="typing-indicator">{userTypingLabel()}</div>
 
@@ -1738,69 +2165,71 @@ export default function ChatsPage() {
               </div>
             ) : null}
 
-            <div className="composer-attachments">
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden-file-input"
-                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                Прикрепить файл
-              </button>
-              <button
-                type="button"
-                onClick={() => onStartRecording('audio')}
-                disabled={uploading || Boolean(recordingMode)}
-              >
-                Голосовое
-              </button>
-              <button
-                type="button"
-                onClick={() => onStartRecording('video')}
-                disabled={uploading || Boolean(recordingMode)}
-              >
-                Кружок
-              </button>
-              {recordingMode ? (
-                <>
-                  <span className="muted">
-                    Идёт запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
-                  </span>
-                  <button type="button" onClick={stopRecording}>
-                    Остановить и отправить
-                  </button>
-                </>
-              ) : null}
-              {selectedFile ? (
-                <>
-                  <span className="muted">{selectedFile.name}</span>
-                  <button type="button" onClick={onUploadSelectedFile} disabled={uploading}>
-                    {uploading ? 'Загрузка...' : 'Отправить файл'}
-                  </button>
-                </>
-              ) : null}
-            </div>
+            <div className="composer-stack">
+              <div className="composer-attachments">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden-file-input"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  Прикрепить файл
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onStartRecording('audio')}
+                  disabled={uploading || Boolean(recordingMode)}
+                >
+                  Голосовое
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onStartRecording('video')}
+                  disabled={uploading || Boolean(recordingMode)}
+                >
+                  Кружок
+                </button>
+                {recordingMode ? (
+                  <>
+                    <span className="muted">
+                      Идёт запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
+                    </span>
+                    <button type="button" onClick={stopRecording}>
+                      Остановить и отправить
+                    </button>
+                  </>
+                ) : null}
+                {selectedFile ? (
+                  <>
+                    <span className="muted">{selectedFile.name}</span>
+                    <button type="button" onClick={onUploadSelectedFile} disabled={uploading}>
+                      {uploading ? 'Загрузка...' : 'Отправить файл'}
+                    </button>
+                  </>
+                ) : null}
+              </div>
 
-            <form onSubmit={onSendMessage} className="composer">
-              <input
-                value={messageInput}
-                onChange={(event) => onTyping(event.target.value)}
-                placeholder={
-                  editingMessageId
-                    ? 'Измените сообщение...'
-                    : 'Введите сообщение...'
-                }
-                disabled={sending}
-              />
-              <button type="submit" disabled={sending || !messageInput.trim()}>
-                {editingMessageId ? 'Сохранить' : 'Отправить'}
-              </button>
-            </form>
+              <form onSubmit={onSendMessage} className="composer">
+                <input
+                  value={messageInput}
+                  onChange={(event) => onTyping(event.target.value)}
+                  placeholder={
+                    editingMessageId
+                      ? 'Измените сообщение...'
+                      : 'Введите сообщение...'
+                  }
+                  disabled={sending}
+                />
+                <button type="submit" disabled={sending || !messageInput.trim()}>
+                  {editingMessageId ? 'Сохранить' : 'Отправить'}
+                </button>
+              </form>
+            </div>
           </>
         ) : (
           <div className="empty-chat">

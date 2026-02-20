@@ -92,6 +92,12 @@ export class ChatsService {
     const memberships = await this.prisma.chatMember.findMany({
       where: { userId },
       include: {
+        lastReadMessage: {
+          select: {
+            id: true,
+            createdAt: true,
+          },
+        },
         chat: {
           include: this.directChatInclude(),
         },
@@ -103,7 +109,27 @@ export class ChatsService {
       },
     });
 
-    return memberships.map((membership) => {
+    const unreadCounts = await Promise.all(
+      memberships.map((membership) =>
+        this.prisma.message.count({
+          where: {
+            chatId: membership.chat.id,
+            senderId: {
+              not: userId,
+            },
+            ...(membership.lastReadMessage
+              ? {
+                  createdAt: {
+                    gt: membership.lastReadMessage.createdAt,
+                  },
+                }
+              : {}),
+          },
+        }),
+      ),
+    );
+
+    return memberships.map((membership, index) => {
       const peer = membership.chat.members.find((m) => m.userId !== userId)?.user;
       return {
         id: membership.chat.id,
@@ -112,6 +138,7 @@ export class ChatsService {
         lastReadMessageId: membership.lastReadMessageId,
         lastMessage: membership.chat.messages[0] ?? null,
         pinnedMessage: membership.chat.pinnedMessage ?? null,
+        unreadCount: unreadCounts[index] ?? 0,
       };
     });
   }
@@ -238,10 +265,24 @@ export class ChatsService {
       where: {
         chatId,
         isDeleted: false,
-        content: {
-          contains: text,
-          mode: 'insensitive',
-        },
+        OR: [
+          {
+            content: {
+              contains: text,
+              mode: 'insensitive',
+            },
+          },
+          {
+            attachments: {
+              some: {
+                fileName: {
+                  contains: text,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          },
+        ],
       },
       orderBy: {
         createdAt: 'desc',
@@ -752,6 +793,7 @@ export class ChatsService {
       lastReadMessageId: ownMembership?.lastReadMessageId ?? null,
       lastMessage: chat.messages[0] ?? null,
       pinnedMessage: chat.pinnedMessage ?? null,
+      unreadCount: 0,
     };
   }
 }

@@ -62,6 +62,7 @@ export type ChatItem = {
   lastReadMessageId: string | null;
   lastMessage: MessageItem | null;
   pinnedMessage: MessageReference | null;
+  unreadCount: number;
 };
 
 export type AttachmentItem = {

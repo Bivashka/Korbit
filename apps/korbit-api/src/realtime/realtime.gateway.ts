@@ -87,6 +87,15 @@ type RealtimeMessagePayload = {
   forwardedFromMessage: RealtimeMessageReference | null;
 };
 
+type PendingCallOffer = {
+  chatId: string;
+  senderId: string;
+  type: 'audio' | 'video';
+  sdp: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: number;
+};
+
 @WebSocketGateway({
   namespace: '/realtime',
   cors: {
@@ -103,6 +112,7 @@ export class RealtimeGateway
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly userConnectionCount = new Map<string, number>();
   private readonly socketToUser = new Map<string, string>();
+  private readonly pendingCallOffers = new Map<string, PendingCallOffer>();
   private pubClient?: RedisClientType;
   private subClient?: RedisClientType;
 
@@ -159,6 +169,8 @@ export class RealtimeGateway
         .filter(([, count]) => count > 0)
         .map(([userId]) => ({ userId, status: 'online' as const }));
       client.emit('presence_snapshot', snapshot);
+
+      this.emitPendingCallOffers(client, user.sub, chatMemberships.map((item) => item.chatId));
     } catch (error) {
       this.logger.warn(`Socket rejected: ${String(error)}`);
       client.disconnect(true);
@@ -177,6 +189,18 @@ export class RealtimeGateway
       this.emitPresence(userId, 'offline');
     } else {
       this.userConnectionCount.set(userId, current - 1);
+    }
+
+    for (const [chatId, pendingOffer] of this.pendingCallOffers.entries()) {
+      if (pendingOffer.senderId !== userId) {
+        continue;
+      }
+      this.pendingCallOffers.delete(chatId);
+      this.server.to(this.chatRoom(chatId)).emit('call_end', {
+        chatId,
+        senderId: userId,
+        at: new Date().toISOString(),
+      });
     }
 
     this.socketToUser.delete(client.id);
@@ -268,6 +292,8 @@ export class RealtimeGateway
       throw new WsException('Нет доступа к чату');
     }
 
+    this.cleanupExpiredPendingCallOffers();
+
     const payload = {
       chatId: body.chatId,
       senderId: user.sub,
@@ -275,6 +301,15 @@ export class RealtimeGateway
       sdp: body.sdp,
       at: new Date().toISOString(),
     };
+
+    this.pendingCallOffers.set(body.chatId, {
+      chatId: body.chatId,
+      senderId: user.sub,
+      type: body.type,
+      sdp: body.sdp,
+      createdAt: payload.at,
+      expiresAt: Date.now() + 75_000,
+    });
 
     client.to(this.chatRoom(body.chatId)).emit('call_offer', payload);
     return { ok: true };
@@ -290,6 +325,8 @@ export class RealtimeGateway
     if (!hasAccess) {
       throw new WsException('Нет доступа к чату');
     }
+
+    this.pendingCallOffers.delete(body.chatId);
 
     const payload = {
       chatId: body.chatId,
@@ -332,6 +369,8 @@ export class RealtimeGateway
     if (!hasAccess) {
       throw new WsException('Нет доступа к чату');
     }
+
+    this.pendingCallOffers.delete(body.chatId);
 
     const payload = {
       chatId: body.chatId,
@@ -472,5 +511,37 @@ export class RealtimeGateway
 
   private userRoom(userId: string) {
     return `user:${userId}`;
+  }
+
+  private cleanupExpiredPendingCallOffers() {
+    const now = Date.now();
+    for (const [chatId, offer] of this.pendingCallOffers.entries()) {
+      if (offer.expiresAt <= now) {
+        this.pendingCallOffers.delete(chatId);
+      }
+    }
+  }
+
+  private emitPendingCallOffers(client: Socket, userId: string, chatIds: string[]) {
+    this.cleanupExpiredPendingCallOffers();
+    const chatIdSet = new Set(chatIds);
+    for (const offer of this.pendingCallOffers.values()) {
+      if (offer.senderId === userId) {
+        continue;
+      }
+      if (!chatIdSet.has(offer.chatId)) {
+        continue;
+      }
+      if (!this.userConnectionCount.get(offer.senderId)) {
+        continue;
+      }
+      client.emit('call_offer', {
+        chatId: offer.chatId,
+        senderId: offer.senderId,
+        type: offer.type,
+        sdp: offer.sdp,
+        at: offer.createdAt,
+      });
+    }
   }
 }
