@@ -32,6 +32,8 @@ export class ChatsService {
       senderId: true,
       content: true,
       isDeleted: true,
+      deletedAt: true,
+      editedAt: true,
       createdAt: true,
       updatedAt: true,
       sender: {
@@ -46,6 +48,16 @@ export class ChatsService {
         select: this.userSelect(),
       },
       attachments: true,
+      reactions: {
+        include: {
+          user: {
+            select: this.userSelect(),
+          },
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      },
       replyToMessage: {
         select: this.messageReferenceSelect(),
       },
@@ -68,6 +80,9 @@ export class ChatsService {
         take: 1,
         orderBy: { createdAt: 'desc' as const },
         include: this.messageInclude(),
+      },
+      pinnedMessage: {
+        select: this.messageReferenceSelect(),
       },
     } satisfies Prisma.ChatInclude;
   }
@@ -95,6 +110,7 @@ export class ChatsService {
         peer,
         lastReadMessageId: membership.lastReadMessageId,
         lastMessage: membership.chat.messages[0] ?? null,
+        pinnedMessage: membership.chat.pinnedMessage ?? null,
       };
     });
   }
@@ -370,6 +386,119 @@ export class ChatsService {
     return created;
   }
 
+  async toggleReaction(
+    userId: string,
+    chatId: string,
+    messageId: string,
+    emoji: string,
+  ) {
+    await this.assertMember(chatId, userId);
+
+    const normalizedEmoji = emoji.trim();
+    if (!normalizedEmoji) {
+      throw new BadRequestException('Эмодзи реакции не указан');
+    }
+
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: { id: true, chatId: true, isDeleted: true },
+    });
+    if (!message || message.chatId !== chatId) {
+      throw new NotFoundException('Сообщение не найдено');
+    }
+    if (message.isDeleted) {
+      throw new BadRequestException('Нельзя поставить реакцию на удалённое сообщение');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.messageReaction.findUnique({
+        where: {
+          messageId_userId_emoji: {
+            messageId,
+            userId,
+            emoji: normalizedEmoji,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (existing) {
+        await tx.messageReaction.delete({
+          where: { id: existing.id },
+        });
+      } else {
+        await tx.messageReaction.create({
+          data: {
+            messageId,
+            userId,
+            emoji: normalizedEmoji,
+          },
+        });
+      }
+    });
+
+    const updatedMessage = await this.prisma.message.findUniqueOrThrow({
+      where: { id: messageId },
+      include: this.messageInclude(),
+    });
+
+    return updatedMessage;
+  }
+
+  async pinMessage(userId: string, chatId: string, messageId: string) {
+    await this.assertMember(chatId, userId);
+
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        chatId: true,
+        isDeleted: true,
+      },
+    });
+    if (!message || message.chatId !== chatId) {
+      throw new NotFoundException('Сообщение не найдено');
+    }
+    if (message.isDeleted) {
+      throw new BadRequestException('Нельзя закрепить удалённое сообщение');
+    }
+
+    const chat = await this.prisma.chat.update({
+      where: { id: chatId },
+      data: {
+        pinnedMessageId: messageId,
+        updatedAt: new Date(),
+      },
+      include: {
+        pinnedMessage: {
+          select: this.messageReferenceSelect(),
+        },
+      },
+    });
+
+    return {
+      chatId: chat.id,
+      pinnedMessage: chat.pinnedMessage ?? null,
+    };
+  }
+
+  async unpinMessage(userId: string, chatId: string) {
+    await this.assertMember(chatId, userId);
+
+    const chat = await this.prisma.chat.update({
+      where: { id: chatId },
+      data: {
+        pinnedMessageId: null,
+        updatedAt: new Date(),
+      },
+    });
+
+    return {
+      chatId: chat.id,
+      pinnedMessage: null,
+    };
+  }
+
   async updateMessage(
     userId: string,
     role: UserRole,
@@ -459,6 +588,9 @@ export class ChatsService {
       await tx.attachment.deleteMany({
         where: { messageId },
       });
+      await tx.messageReaction.deleteMany({
+        where: { messageId },
+      });
 
       const message = await tx.message.update({
         where: { id: messageId },
@@ -474,7 +606,18 @@ export class ChatsService {
 
       await tx.chat.update({
         where: { id: chatId },
-        data: { updatedAt: new Date() },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+      await tx.chat.updateMany({
+        where: {
+          id: chatId,
+          pinnedMessageId: messageId,
+        },
+        data: {
+          pinnedMessageId: null,
+        },
       });
 
       return message;
@@ -567,6 +710,7 @@ export class ChatsService {
         };
       }>;
       messages: Array<Record<string, unknown>>;
+      pinnedMessage: Record<string, unknown> | null;
     },
     userId: string,
   ) {
@@ -577,6 +721,7 @@ export class ChatsService {
       peer: chat.members.find((member) => member.userId !== userId)?.user ?? null,
       lastReadMessageId: ownMembership?.lastReadMessageId ?? null,
       lastMessage: chat.messages[0] ?? null,
+      pinnedMessage: chat.pinnedMessage ?? null,
     };
   }
 }

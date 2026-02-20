@@ -48,6 +48,7 @@ model User {
   directChatsA DirectChat[] @relation("DirectChatA")
   directChatsB DirectChat[] @relation("DirectChatB")
   callsStarted Call[]       @relation("CallInitiator")
+  reactions   MessageReaction[]
 }
 
 model Session {
@@ -80,14 +81,18 @@ model Invite {
 }
 
 model Chat {
-  id         String       @id @default(cuid())
-  type       ChatType     @default(DIRECT)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-  members    ChatMember[]
-  messages   Message[]
-  calls      Call[]
-  directChat DirectChat?
+  id              String       @id @default(cuid())
+  type            ChatType     @default(DIRECT)
+  pinnedMessageId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  members         ChatMember[]
+  messages        Message[]
+  calls           Call[]
+  directChat      DirectChat?
+  pinnedMessage   Message?     @relation("PinnedChatMessage", fields: [pinnedMessageId], references: [id], onDelete: SetNull)
+
+  @@index([pinnedMessageId])
 }
 
 model DirectChat {
@@ -135,15 +140,31 @@ model Message {
   sender                 User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   readByMembers          ChatMember[] @relation("LastReadMessage")
   attachments            Attachment[]
+  reactions              MessageReaction[]
   replyToMessage         Message?     @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
   replies                Message[]    @relation("MessageReplies")
   forwardedFromMessage   Message?     @relation("MessageForwards", fields: [forwardedFromMessageId], references: [id], onDelete: SetNull)
   forwards               Message[]    @relation("MessageForwards")
+  pinnedInChats          Chat[]       @relation("PinnedChatMessage")
 
   @@index([chatId, createdAt])
   @@index([senderId])
   @@index([replyToMessageId])
   @@index([forwardedFromMessageId])
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
 }
 
 model Attachment {

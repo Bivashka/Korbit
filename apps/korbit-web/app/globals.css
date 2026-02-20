@@ -318,6 +318,39 @@ button:disabled {
   gap: 0.35rem;
 }
 
+.quick-reactions {
+  display: flex;
+  gap: 0.15rem;
+  align-items: center;
+}
+
+.reaction-list {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-top: 0.1rem;
+}
+
+.reaction-chip {
+  border: 1px solid #c8d5e4;
+  background: #eff5fb;
+  color: #23384c;
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  display: inline-flex;
+  gap: 0.28rem;
+  align-items: center;
+}
+
+.reaction-chip.own {
+  border-color: #7bb2e8;
+  background: #dff0ff;
+}
+
+.reaction-chip small {
+  font-size: 0.72rem;
+}
+
 .message.own {
   margin-left: auto;
   background: var(--tg-bubble-out);
@@ -335,6 +368,24 @@ button:disabled {
   color: #60778c;
   font-size: 0.86rem;
   padding: 0 1rem 0.2rem;
+}
+
+.pinned-banner {
+  margin: 0.55rem 1rem 0;
+  border: 1px solid #cfdcf0;
+  background: rgba(240, 247, 255, 0.96);
+  border-radius: 12px;
+  padding: 0.45rem 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.pinned-banner p {
+  margin: 0.2rem 0 0;
+  color: #57708a;
+  font-size: 0.82rem;
 }
 
 .composer-context {

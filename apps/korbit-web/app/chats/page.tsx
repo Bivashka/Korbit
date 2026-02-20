@@ -15,12 +15,21 @@ import {
   listMessages,
   logout,
   markRead,
+  pinMessage,
   sendMessage,
+  toggleReaction,
+  unpinMessage,
   updateMessage,
   uploadAttachment,
 } from '../../lib/api';
 import { getAccessToken } from '../../lib/session';
-import { AttachmentItem, ChatItem, MessageItem, UserProfile } from '../../lib/types';
+import {
+  AttachmentItem,
+  ChatItem,
+  MessageItem,
+  MessageReference,
+  UserProfile,
+} from '../../lib/types';
 
 type PresenceState = Record<string, 'online' | 'offline'>;
 type CallType = 'audio' | 'video';
@@ -52,6 +61,7 @@ type IncomingCall = {
 };
 
 type RecordingMode = 'audio' | 'video';
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
 
 export default function ChatsPage() {
   const router = useRouter();
@@ -469,6 +479,13 @@ export default function ChatsPage() {
       },
     );
 
+    socket.on(
+      'chat_pinned_message',
+      (event: { chatId: string; pinnedMessage: MessageReference | null }) => {
+        applyPinnedMessage(event.chatId, event.pinnedMessage);
+      },
+    );
+
     socket.on('call_offer', (event: CallOfferEvent) => {
       if (event.senderId === me?.id) {
         return;
@@ -634,6 +651,19 @@ export default function ChatsPage() {
     }
   }
 
+  function applyPinnedMessage(chatId: string, pinnedMessage: MessageReference | null) {
+    setChats((previous) =>
+      previous.map((chat) =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              pinnedMessage,
+            }
+          : chat,
+      ),
+    );
+  }
+
   async function onSendMessage(event: FormEvent) {
     event.preventDefault();
     if (!activeChatId) {
@@ -750,6 +780,48 @@ export default function ChatsPage() {
       setForwardSourceMessage(null);
     } catch (rawError) {
       setError(rawError instanceof Error ? rawError.message : 'Ошибка пересылки сообщения');
+    }
+  }
+
+  async function onToggleReaction(message: MessageItem, emoji: string) {
+    if (!activeChatId || message.isDeleted) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const updated = await toggleReaction(activeChatId, message.id, emoji);
+      applyUpdatedMessage(updated);
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка реакции');
+    }
+  }
+
+  async function onPinMessage(message: MessageItem) {
+    if (!activeChatId || message.isDeleted) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const result = await pinMessage(activeChatId, message.id);
+      applyPinnedMessage(activeChatId, result.pinnedMessage);
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка закрепления');
+    }
+  }
+
+  async function onUnpinMessage() {
+    if (!activeChatId) {
+      return;
+    }
+
+    setError(null);
+    try {
+      await unpinMessage(activeChatId);
+      applyPinnedMessage(activeChatId, null);
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка открепления');
     }
   }
 
@@ -1070,6 +1142,23 @@ export default function ChatsPage() {
     return `${normalized.slice(0, 117)}...`;
   }
 
+  function reactionSummary(message: MessageItem) {
+    const counters = new Map<string, { count: number; own: boolean }>();
+    for (const reaction of message.reactions ?? []) {
+      const current = counters.get(reaction.emoji) ?? { count: 0, own: false };
+      current.count += 1;
+      if (reaction.userId === me?.id) {
+        current.own = true;
+      }
+      counters.set(reaction.emoji, current);
+    }
+    return Array.from(counters.entries()).map(([emoji, value]) => ({
+      emoji,
+      count: value.count,
+      own: value.own,
+    }));
+  }
+
   function renderAttachments(attachments?: AttachmentItem[]) {
     if (!attachments || attachments.length === 0) {
       return null;
@@ -1214,6 +1303,28 @@ export default function ChatsPage() {
               </div>
             </header>
 
+            {activeChat.pinnedMessage ? (
+              <section className="pinned-banner">
+                <div>
+                  <strong>
+                    Закреп: {messageAuthorLabel(activeChat.pinnedMessage)}
+                  </strong>
+                  <p>
+                    {activeChat.pinnedMessage.isDeleted
+                      ? 'Сообщение удалено'
+                      : messageSnippet(activeChat.pinnedMessage.content)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => void onUnpinMessage()}
+                >
+                  Открепить
+                </button>
+              </section>
+            ) : null}
+
             {!canUseMediaDevices() ? (
               <p className="muted">
                 Звонки доступны только по HTTPS. Сейчас открыт небезопасный режим.
@@ -1286,6 +1397,7 @@ export default function ChatsPage() {
               {messages.map((message) => {
                 const own = message.senderId === me?.id;
                 const canManage = own || me?.role === 'ADMIN';
+                const reactionsView = reactionSummary(message);
                 return (
                   <article
                     key={message.id}
@@ -1318,7 +1430,37 @@ export default function ChatsPage() {
                     <p>{message.content}</p>
                     {renderAttachments(message.attachments)}
 
+                    {reactionsView.length > 0 ? (
+                      <div className="reaction-list">
+                        {reactionsView.map((item) => (
+                          <button
+                            key={item.emoji}
+                            type="button"
+                            className={`reaction-chip ${item.own ? 'own' : ''}`}
+                            onClick={() => void onToggleReaction(message, item.emoji)}
+                          >
+                            <span>{item.emoji}</span>
+                            <small>{item.count}</small>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
                     <div className="message-actions">
+                      {!message.isDeleted ? (
+                        <div className="quick-reactions">
+                          {QUICK_REACTIONS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              className="link-button"
+                              onClick={() => void onToggleReaction(message, emoji)}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                       <button
                         type="button"
                         className="link-button"
@@ -1335,6 +1477,16 @@ export default function ChatsPage() {
                       >
                         Переслать
                       </button>
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => void onPinMessage(message)}
+                          disabled={message.isDeleted}
+                        >
+                          Закрепить
+                        </button>
+                      ) : null}
                       {canManage ? (
                         <button
                           type="button"

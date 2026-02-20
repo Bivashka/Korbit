@@ -22,9 +22,20 @@ export type MessageReference = {
   senderId: string;
   content: string;
   isDeleted: boolean;
+  deletedAt: string | null;
+  editedAt: string | null;
   createdAt: string;
   updatedAt: string;
   sender: ChatPeer;
+};
+
+export type MessageReaction = {
+  id: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  createdAt: string;
+  user: ChatPeer;
 };
 
 export type MessageItem = {
@@ -39,6 +50,7 @@ export type MessageItem = {
   updatedAt: string;
   sender: ChatPeer;
   attachments?: AttachmentItem[];
+  reactions?: MessageReaction[];
   replyToMessage?: MessageReference | null;
   forwardedFromMessage?: MessageReference | null;
 };
@@ -49,6 +61,7 @@ export type ChatItem = {
   peer: ChatPeer | null;
   lastReadMessageId: string | null;
   lastMessage: MessageItem | null;
+  pinnedMessage: MessageReference | null;
 };
 
 export type AttachmentItem = {

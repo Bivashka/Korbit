@@ -26,6 +26,7 @@ import { ForwardMessageDto } from './dto/forward-message.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { ToggleReactionDto } from './dto/toggle-reaction.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 
 @Controller('chats')
@@ -117,7 +118,46 @@ export class ChatsController {
       messageId,
     );
     this.realtimeGateway.emitMessageUpdated(chatId, deleted);
+    this.realtimeGateway.emitChatPinnedMessage(chatId, null);
     return deleted;
+  }
+
+  @Post(':chatId/messages/:messageId/reactions/toggle')
+  async toggleReaction(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: ToggleReactionDto,
+  ) {
+    const updated = await this.chatsService.toggleReaction(
+      user.sub,
+      chatId,
+      messageId,
+      dto.emoji,
+    );
+    this.realtimeGateway.emitMessageUpdated(chatId, updated);
+    return updated;
+  }
+
+  @Post(':chatId/pin/:messageId')
+  async pinMessage(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    const result = await this.chatsService.pinMessage(user.sub, chatId, messageId);
+    this.realtimeGateway.emitChatPinnedMessage(chatId, result.pinnedMessage);
+    return result;
+  }
+
+  @Delete(':chatId/pin')
+  async unpinMessage(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+  ) {
+    const result = await this.chatsService.unpinMessage(user.sub, chatId);
+    this.realtimeGateway.emitChatPinnedMessage(chatId, null);
+    return result;
   }
 
   @Post(':chatId/read')

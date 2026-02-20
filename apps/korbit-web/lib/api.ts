@@ -3,6 +3,7 @@ import {
   AuthPayload,
   ChatItem,
   MessageItem,
+  MessageReference,
   UserProfile,
 } from './types';
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './session';
@@ -244,6 +245,32 @@ export async function forwardMessage(
   return request<MessageItem>(`/chats/${sourceChatId}/messages/${messageId}/forward`, {
     method: 'POST',
     body: { targetChatId },
+  });
+}
+
+export async function toggleReaction(
+  chatId: string,
+  messageId: string,
+  emoji: string,
+) {
+  return request<MessageItem>(`/chats/${chatId}/messages/${messageId}/reactions/toggle`, {
+    method: 'POST',
+    body: { emoji },
+  });
+}
+
+export async function pinMessage(chatId: string, messageId: string) {
+  return request<{ chatId: string; pinnedMessage: MessageReference | null }>(
+    `/chats/${chatId}/pin/${messageId}`,
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export async function unpinMessage(chatId: string) {
+  return request<{ chatId: string; pinnedMessage: null }>(`/chats/${chatId}/pin`, {
+    method: 'DELETE',
   });
 }
 

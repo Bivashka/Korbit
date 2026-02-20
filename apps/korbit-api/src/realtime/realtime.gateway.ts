@@ -27,6 +27,66 @@ import { CallEndDto } from './dto/call/call-end.dto';
 
 type SocketUser = JwtPayload;
 
+type RealtimeMessageReference = {
+  id: string;
+  chatId: string;
+  senderId: string;
+  content: string;
+  isDeleted: boolean;
+  deletedAt: Date | null;
+  editedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  sender: {
+    id: string;
+    username: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+  };
+};
+
+type RealtimeMessagePayload = {
+  id: string;
+  chatId: string;
+  senderId: string;
+  content: string;
+  isDeleted: boolean;
+  deletedAt: Date | null;
+  editedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  sender: {
+    id: string;
+    username: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+  };
+  attachments: Array<{
+    id: string;
+    messageId: string;
+    fileName: string;
+    mimeType: string;
+    size: number;
+    url: string;
+    createdAt: Date;
+  }>;
+  reactions: Array<{
+    id: string;
+    messageId: string;
+    userId: string;
+    emoji: string;
+    createdAt: Date;
+    user: {
+      id: string;
+      username: string;
+      displayName: string | null;
+      avatarUrl: string | null;
+    };
+  }>;
+  replyToMessage: RealtimeMessageReference | null;
+  forwardedFromMessage: RealtimeMessageReference | null;
+};
+
 @WebSocketGateway({
   namespace: '/realtime',
   cors: {
@@ -282,132 +342,27 @@ export class RealtimeGateway
     return { ok: true };
   }
 
-  emitNewMessage(
-    chatId: string,
-    message: {
-      id: string;
-      chatId: string;
-      senderId: string;
-      content: string;
-      isDeleted: boolean;
-      deletedAt: Date | null;
-      editedAt: Date | null;
-      createdAt: Date;
-      updatedAt: Date;
-      sender: {
-        id: string;
-        username: string;
-        displayName: string | null;
-        avatarUrl: string | null;
-      };
-      attachments: Array<{
-        id: string;
-        messageId: string;
-        fileName: string;
-        mimeType: string;
-        size: number;
-        url: string;
-        createdAt: Date;
-      }>;
-      replyToMessage: {
-        id: string;
-        chatId: string;
-        senderId: string;
-        content: string;
-        isDeleted: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-        sender: {
-          id: string;
-          username: string;
-          displayName: string | null;
-          avatarUrl: string | null;
-        };
-      } | null;
-      forwardedFromMessage: {
-        id: string;
-        chatId: string;
-        senderId: string;
-        content: string;
-        isDeleted: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-        sender: {
-          id: string;
-          username: string;
-          displayName: string | null;
-          avatarUrl: string | null;
-        };
-      } | null;
-    },
-  ) {
+  emitNewMessage(chatId: string, message: RealtimeMessagePayload) {
     this.server
       .to(this.chatRoom(chatId))
       .emit('new_message', this.serializeMessagePayload(message));
   }
 
-  emitMessageUpdated(
-    chatId: string,
-    message: {
-      id: string;
-      chatId: string;
-      senderId: string;
-      content: string;
-      isDeleted: boolean;
-      deletedAt: Date | null;
-      editedAt: Date | null;
-      createdAt: Date;
-      updatedAt: Date;
-      sender: {
-        id: string;
-        username: string;
-        displayName: string | null;
-        avatarUrl: string | null;
-      };
-      attachments: Array<{
-        id: string;
-        messageId: string;
-        fileName: string;
-        mimeType: string;
-        size: number;
-        url: string;
-        createdAt: Date;
-      }>;
-      replyToMessage: {
-        id: string;
-        chatId: string;
-        senderId: string;
-        content: string;
-        isDeleted: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-        sender: {
-          id: string;
-          username: string;
-          displayName: string | null;
-          avatarUrl: string | null;
-        };
-      } | null;
-      forwardedFromMessage: {
-        id: string;
-        chatId: string;
-        senderId: string;
-        content: string;
-        isDeleted: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-        sender: {
-          id: string;
-          username: string;
-          displayName: string | null;
-          avatarUrl: string | null;
-        };
-      } | null;
-    },
-  ) {
+  emitMessageUpdated(chatId: string, message: RealtimeMessagePayload) {
     this.server
       .to(this.chatRoom(chatId))
       .emit('message_updated', this.serializeMessagePayload(message));
+  }
+
+  emitChatPinnedMessage(
+    chatId: string,
+    pinnedMessage: RealtimeMessageReference | null,
+  ) {
+    this.server.to(this.chatRoom(chatId)).emit('chat_pinned_message', {
+      chatId,
+      pinnedMessage: this.serializeMessageReference(pinnedMessage),
+      at: new Date().toISOString(),
+    });
   }
 
   emitReadReceipt(
@@ -428,62 +383,7 @@ export class RealtimeGateway
     });
   }
 
-  private serializeMessagePayload(message: {
-    id: string;
-    chatId: string;
-    senderId: string;
-    content: string;
-    isDeleted: boolean;
-    deletedAt: Date | null;
-    editedAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    sender: {
-      id: string;
-      username: string;
-      displayName: string | null;
-      avatarUrl: string | null;
-    };
-    attachments: Array<{
-      id: string;
-      messageId: string;
-      fileName: string;
-      mimeType: string;
-      size: number;
-      url: string;
-      createdAt: Date;
-    }>;
-    replyToMessage: {
-      id: string;
-      chatId: string;
-      senderId: string;
-      content: string;
-      isDeleted: boolean;
-      createdAt: Date;
-      updatedAt: Date;
-      sender: {
-        id: string;
-        username: string;
-        displayName: string | null;
-        avatarUrl: string | null;
-      };
-    } | null;
-    forwardedFromMessage: {
-      id: string;
-      chatId: string;
-      senderId: string;
-      content: string;
-      isDeleted: boolean;
-      createdAt: Date;
-      updatedAt: Date;
-      sender: {
-        id: string;
-        username: string;
-        displayName: string | null;
-        avatarUrl: string | null;
-      };
-    } | null;
-  }) {
+  private serializeMessagePayload(message: RealtimeMessagePayload) {
     return {
       ...message,
       createdAt: message.createdAt.toISOString(),
@@ -494,20 +394,27 @@ export class RealtimeGateway
         ...attachment,
         createdAt: attachment.createdAt.toISOString(),
       })),
-      replyToMessage: message.replyToMessage
-        ? {
-            ...message.replyToMessage,
-            createdAt: message.replyToMessage.createdAt.toISOString(),
-            updatedAt: message.replyToMessage.updatedAt.toISOString(),
-          }
-        : null,
-      forwardedFromMessage: message.forwardedFromMessage
-        ? {
-            ...message.forwardedFromMessage,
-            createdAt: message.forwardedFromMessage.createdAt.toISOString(),
-            updatedAt: message.forwardedFromMessage.updatedAt.toISOString(),
-          }
-        : null,
+      reactions: message.reactions.map((reaction) => ({
+        ...reaction,
+        createdAt: reaction.createdAt.toISOString(),
+      })),
+      replyToMessage: this.serializeMessageReference(message.replyToMessage),
+      forwardedFromMessage: this.serializeMessageReference(
+        message.forwardedFromMessage,
+      ),
+    };
+  }
+
+  private serializeMessageReference(message: RealtimeMessageReference | null) {
+    if (!message) {
+      return null;
+    }
+    return {
+      ...message,
+      createdAt: message.createdAt.toISOString(),
+      updatedAt: message.updatedAt.toISOString(),
+      deletedAt: message.deletedAt ? message.deletedAt.toISOString() : null,
+      editedAt: message.editedAt ? message.editedAt.toISOString() : null,
     };
   }
 
