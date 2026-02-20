@@ -30,14 +30,14 @@ env KORBIT_HOST=chat.example.com \
     bash
 ```
 
-No domain yet? Run with only SSL flag and script will auto-use `<YOUR_PUBLIC_IP>.nip.io`:
+No domain yet? Run with only SSL flag and script will auto-use `<YOUR_PUBLIC_IP>.traefik.me`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | \
 env KORBIT_ENABLE_SSL=true bash
 ```
 
-You can override the fallback DNS zone if needed:
+You can override preferred IP-DNS zone if needed:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | \
@@ -45,3 +45,6 @@ env KORBIT_ENABLE_SSL=true \
     KORBIT_IP_SSL_DOMAIN=sslip.io \
     bash
 ```
+
+When ACME rate limits are hit on one zone, script will automatically retry other zones from:
+`KORBIT_IP_SSL_DOMAIN_FALLBACKS` (default `traefik.me,nip.io,sslip.io`).

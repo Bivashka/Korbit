@@ -8,9 +8,12 @@ REGISTRATION_MODE="${KORBIT_REGISTRATION_MODE:-invite}"
 HOST="${KORBIT_HOST:-}"
 ENABLE_SSL="${KORBIT_ENABLE_SSL:-false}"
 LETSENCRYPT_EMAIL="${KORBIT_LETSENCRYPT_EMAIL:-}"
-IP_SSL_DOMAIN="${KORBIT_IP_SSL_DOMAIN:-nip.io}"
+IP_SSL_DOMAIN="${KORBIT_IP_SSL_DOMAIN:-traefik.me}"
+IP_SSL_DOMAIN_FALLBACKS="${KORBIT_IP_SSL_DOMAIN_FALLBACKS:-traefik.me,nip.io,sslip.io}"
 ADMIN_USERNAME="${KORBIT_ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${KORBIT_ADMIN_PASSWORD:-}"
+AUTO_IP_SSL_HOST="false"
+HOST_IP_VALUE=""
 
 log() {
   printf '[%s] %s\n' "${SCRIPT_NAME}" "$*"
@@ -187,7 +190,7 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASSWORD
 
 CORS_ORIGIN=http://127.0.0.1
-NEXT_PUBLIC_API_URL=http://127.0.0.1/api
+NEXT_PUBLIC_API_URL=/api
 NEXT_PUBLIC_REGISTRATION_MODE=invite
 EOF
 }
@@ -209,6 +212,8 @@ configure_env_file() {
   fi
 
   if [[ "${ENABLE_SSL}" == "true" ]] && is_ipv4 "${HOST}"; then
+    HOST_IP_VALUE="${HOST}"
+    AUTO_IP_SSL_HOST="true"
     HOST="${HOST}.${IP_SSL_DOMAIN}"
     log "KORBIT_ENABLE_SSL=true with IP detected. Using ${HOST} for automatic TLS certificate."
   fi
@@ -251,7 +256,7 @@ configure_env_file() {
   fi
 
   set_env_var "CORS_ORIGIN" "${scheme}://${HOST}" "${env_file}"
-  set_env_var "NEXT_PUBLIC_API_URL" "${scheme}://${HOST}/api" "${env_file}"
+  set_env_var "NEXT_PUBLIC_API_URL" "/api" "${env_file}"
   set_env_var "NEXT_PUBLIC_REGISTRATION_MODE" "${REGISTRATION_MODE}" "${env_file}"
 }
 
@@ -344,11 +349,57 @@ enable_ssl_if_needed() {
     LETSENCRYPT_EMAIL="admin@${HOST}"
   fi
 
-  log "Installing Certbot and issuing TLS certificate for ${HOST}"
+  log "Installing Certbot"
   run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
 
-  run_root certbot --nginx --non-interactive --agree-tos \
-    --redirect -m "${LETSENCRYPT_EMAIL}" -d "${HOST}"
+  issue_cert_for_host() {
+    local target_host="$1"
+    log "Issuing TLS certificate for ${target_host}"
+    if run_root certbot --nginx --non-interactive --agree-tos \
+      --redirect -m "${LETSENCRYPT_EMAIL}" -d "${target_host}"; then
+      HOST="${target_host}"
+      set_env_var "CORS_ORIGIN" "https://${HOST}" "${INSTALL_DIR}/.env.vps"
+      set_env_var "NEXT_PUBLIC_API_URL" "/api" "${INSTALL_DIR}/.env.vps"
+      return 0
+    fi
+    return 1
+  }
+
+  if issue_cert_for_host "${HOST}"; then
+    return 0
+  fi
+
+  if [[ "${AUTO_IP_SSL_HOST}" == "true" && -n "${HOST_IP_VALUE}" ]]; then
+    warn "TLS issuance failed for ${HOST}. Trying fallback IP DNS zones."
+
+    local raw_domain
+    local domain
+    local candidate_host
+    IFS=',' read -r -a domains <<< "${IP_SSL_DOMAIN_FALLBACKS}"
+    for raw_domain in "${domains[@]}"; do
+      domain="$(echo "${raw_domain}" | xargs)"
+      [[ -n "${domain}" ]] || continue
+
+      candidate_host="${HOST_IP_VALUE}.${domain}"
+      [[ "${candidate_host}" == "${HOST}" ]] && continue
+
+      HOST="${candidate_host}"
+      configure_nginx
+      if issue_cert_for_host "${candidate_host}"; then
+        return 0
+      fi
+    done
+
+    warn "Could not issue TLS certificate due ACME limits. Falling back to HTTP on raw IP."
+    ENABLE_SSL="false"
+    HOST="${HOST_IP_VALUE}"
+    configure_nginx
+    set_env_var "CORS_ORIGIN" "http://${HOST}" "${INSTALL_DIR}/.env.vps"
+    set_env_var "NEXT_PUBLIC_API_URL" "/api" "${INSTALL_DIR}/.env.vps"
+    return 0
+  fi
+
+  die "Failed to issue TLS certificate for ${HOST}. Check /var/log/letsencrypt/letsencrypt.log"
 }
 
 print_summary() {
