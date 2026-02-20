@@ -20,7 +20,7 @@ export class LoginAttemptsService {
     const remaining = state.lockUntil - Date.now();
     if (remaining > 0) {
       throw new HttpException(
-        `Login is temporarily blocked for ${Math.ceil(remaining / 1000)}s`,
+        `Вход временно заблокирован на ${Math.ceil(remaining / 1000)} сек.`,
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }

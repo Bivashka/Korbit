@@ -44,7 +44,7 @@ export class AuthService {
     );
 
     if (registrationMode === 'admin_only') {
-      throw new ForbiddenException('Self-registration is disabled');
+      throw new ForbiddenException('Самостоятельная регистрация отключена');
     }
 
     this.assertPasswordPolicy(dto.password);
@@ -60,20 +60,20 @@ export class AuthService {
         if (registrationMode === 'invite') {
           const inviteCode = dto.inviteCode?.trim();
           if (!inviteCode) {
-            throw new BadRequestException('Invite code is required');
+            throw new BadRequestException('Требуется инвайт-код');
           }
 
           const invite = await tx.invite.findUnique({
             where: { code: inviteCode },
           });
           if (!invite || invite.disabledAt) {
-            throw new ForbiddenException('Invite is not valid');
+            throw new ForbiddenException('Инвайт недействителен');
           }
           if (invite.expiresAt && invite.expiresAt < new Date()) {
-            throw new ForbiddenException('Invite expired');
+            throw new ForbiddenException('Срок действия инвайта истёк');
           }
           if (invite.usesCount >= invite.maxUses) {
-            throw new ForbiddenException('Invite exhausted');
+            throw new ForbiddenException('Лимит использований инвайта исчерпан');
           }
 
           await tx.invite.update({
@@ -96,7 +96,7 @@ export class AuthService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Username already exists');
+        throw new ConflictException('Пользователь с таким логином уже существует');
       }
       throw error;
     }
@@ -116,13 +116,13 @@ export class AuthService {
 
     if (!user) {
       this.loginAttemptsService.registerFailure(attemptKey);
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Неверный логин или пароль');
     }
 
     const isPasswordValid = await argon2.verify(user.passwordHash, dto.password);
     if (!isPasswordValid) {
       this.loginAttemptsService.registerFailure(attemptKey);
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Неверный логин или пароль');
     }
 
     this.loginAttemptsService.registerSuccess(attemptKey);
@@ -138,12 +138,12 @@ export class AuthService {
     });
 
     if (!session || session.revokedAt || session.expiresAt < new Date()) {
-      throw new UnauthorizedException('Session is expired');
+      throw new UnauthorizedException('Сессия истекла');
     }
 
     const isValid = await argon2.verify(session.refreshTokenHash, refreshToken);
     if (!isValid) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException('Неверный refresh-токен');
     }
 
     const tokens = await this.issueTokens(
@@ -226,7 +226,7 @@ export class AuthService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('Username already exists');
+        throw new ConflictException('Пользователь с таким логином уже существует');
       }
       throw error;
     }
@@ -278,12 +278,12 @@ export class AuthService {
         secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
       });
       if (payload.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid refresh token type');
+        throw new UnauthorizedException('Неверный тип refresh-токена');
       }
       return payload;
     } catch (error) {
       this.logger.warn(`Refresh token verification failed: ${String(error)}`);
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new UnauthorizedException('Неверный refresh-токен');
     }
   }
 
@@ -293,7 +293,7 @@ export class AuthService {
     const hasDigit = /\d/.test(password);
     if (password.length < 10 || !hasUpper || !hasLower || !hasDigit) {
       throw new BadRequestException(
-        'Password must be at least 10 symbols and include upper/lower case letters and numbers',
+        'Пароль должен быть не короче 10 символов и содержать верхний/нижний регистр и цифры',
       );
     }
   }

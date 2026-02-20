@@ -22,11 +22,11 @@ export default function RegisterPage() {
     return (
       <main className="auth-layout">
         <section className="card">
-          <h1>Registration Disabled</h1>
+          <h1>Регистрация отключена</h1>
           <p className="muted">
-            This Korbit instance uses admin-managed accounts only.
+            На этом сервере Korbit аккаунты создаёт только администратор.
           </p>
-          <Link href="/login">Back to login</Link>
+          <Link href="/login">Назад ко входу</Link>
         </section>
       </main>
     );
@@ -37,7 +37,7 @@ export default function RegisterPage() {
     setError(null);
 
     if (password !== passwordConfirm) {
-      setError('Password confirmation does not match');
+      setError('Подтверждение пароля не совпадает');
       return;
     }
 
@@ -54,7 +54,7 @@ export default function RegisterPage() {
       const message =
         rawError instanceof ApiError
           ? rawError.message
-          : 'Registration failed';
+          : 'Ошибка регистрации';
       setError(message);
     } finally {
       setSubmitting(false);
@@ -64,12 +64,12 @@ export default function RegisterPage() {
   return (
     <main className="auth-layout">
       <section className="card">
-        <h1>Create Korbit Account</h1>
-        <p className="muted">Invite-only registration</p>
+        <h1>Создание аккаунта Korbit</h1>
+        <p className="muted">Регистрация по инвайт-коду</p>
 
         <form onSubmit={onSubmit} className="column">
           <label>
-            Username
+            Логин
             <input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -80,17 +80,17 @@ export default function RegisterPage() {
           </label>
 
           <label>
-            Display name
+            Отображаемое имя
             <input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Optional"
+              placeholder="Необязательно"
               autoComplete="name"
             />
           </label>
 
           <label>
-            Invite code
+            Инвайт-код
             <input
               value={inviteCode}
               onChange={(event) => setInviteCode(event.target.value)}
@@ -100,19 +100,19 @@ export default function RegisterPage() {
           </label>
 
           <label>
-            Password
+            Пароль
             <input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="At least 10 chars, upper/lower/digit"
+              placeholder="Минимум 10 символов, верхний/нижний регистр и цифры"
               required
               autoComplete="new-password"
             />
           </label>
 
           <label>
-            Confirm password
+            Подтвердите пароль
             <input
               type="password"
               value={passwordConfirm}
@@ -124,15 +124,14 @@ export default function RegisterPage() {
 
           {error ? <p className="error">{error}</p> : null}
           <button type="submit" disabled={submitting}>
-            {submitting ? 'Creating account...' : 'Create account'}
+            {submitting ? 'Создание аккаунта...' : 'Создать аккаунт'}
           </button>
         </form>
 
         <p className="muted">
-          Already have access? <Link href="/login">Sign in</Link>
+          Уже есть доступ? <Link href="/login">Войти</Link>
         </p>
       </section>
     </main>
   );
 }
-

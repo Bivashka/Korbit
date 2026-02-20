@@ -3,16 +3,15 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Korbit',
-  description: 'Private team messenger',
+  description: 'Приватный мессенджер для команды',
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="ru">
       <body>{children}</body>
     </html>
   );
 }
-

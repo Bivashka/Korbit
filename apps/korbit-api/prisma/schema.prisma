@@ -18,6 +18,19 @@ enum ChatType {
   CHANNEL
 }
 
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  ACTIVE
+  ENDED
+  MISSED
+  DECLINED
+}
+
 model User {
   id           String       @id @default(cuid())
   username     String       @unique
@@ -34,6 +47,7 @@ model User {
   messages     Message[]    @relation("MessageSender")
   directChatsA DirectChat[] @relation("DirectChatA")
   directChatsB DirectChat[] @relation("DirectChatB")
+  callsStarted Call[]       @relation("CallInitiator")
 }
 
 model Session {
@@ -72,6 +86,7 @@ model Chat {
   updatedAt  DateTime     @updatedAt
   members    ChatMember[]
   messages   Message[]
+  calls      Call[]
   directChat DirectChat?
 }
 
@@ -114,8 +129,39 @@ model Message {
   chat          Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender        User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   readByMembers ChatMember[] @relation("LastReadMessage")
+  attachments   Attachment[]
 
   @@index([chatId, createdAt])
   @@index([senderId])
 }
 
+model Attachment {
+  id        String   @id @default(cuid())
+  messageId String
+  fileName  String
+  mimeType  String
+  size      Int
+  url       String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model Call {
+  id          String     @id @default(cuid())
+  chatId       String
+  initiatorId  String
+  type         CallType
+  status       CallStatus @default(RINGING)
+  startedAt    DateTime   @default(now())
+  answeredAt   DateTime?
+  endedAt      DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  chat         Chat       @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  initiator    User       @relation("CallInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, startedAt])
+  @@index([initiatorId])
+}

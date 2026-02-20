@@ -1,4 +1,10 @@
-import { AuthPayload, ChatItem, MessageItem, UserProfile } from './types';
+import {
+  AttachmentItem,
+  AuthPayload,
+  ChatItem,
+  MessageItem,
+  UserProfile,
+} from './types';
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './session';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -17,6 +23,7 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
   withAuth?: boolean;
+  contentType?: string;
 };
 
 async function safeJson(response: Response) {
@@ -61,14 +68,15 @@ export async function request<T>(
   retry = true,
 ): Promise<T> {
   const withAuth = options.withAuth ?? true;
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
+  if (options.contentType !== 'omit') {
+    headers['Content-Type'] = options.contentType ?? 'application/json';
+  }
 
   if (withAuth) {
     const accessToken = getAccessToken();
     if (!accessToken) {
-      throw new ApiError('Unauthorized', 401);
+      throw new ApiError('Требуется авторизация', 401);
     }
     headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -94,7 +102,7 @@ export async function request<T>(
       'message' in details &&
       typeof details.message === 'string'
         ? details.message
-        : `Request failed (${response.status})`;
+        : `Ошибка запроса (${response.status})`;
     throw new ApiError(message, response.status, details);
   }
 
@@ -153,6 +161,22 @@ export async function logout() {
 
 export function getApiBaseUrl() {
   return API_URL;
+}
+
+export function getSocketConfig() {
+  if (typeof window === 'undefined') {
+    return {
+      namespaceUrl: `${API_URL}/realtime`,
+      path: '/socket.io',
+    };
+  }
+
+  const parsed = new URL(API_URL, window.location.origin);
+  const basePath = parsed.pathname === '/' ? '' : parsed.pathname.replace(/\/$/, '');
+  return {
+    namespaceUrl: `${parsed.origin}/realtime`,
+    path: `${basePath}/socket.io`,
+  };
 }
 
 export function isAuthenticated() {
@@ -226,3 +250,34 @@ export async function createInvite(params: {
   });
 }
 
+export async function uploadAttachment(chatId: string, file: File) {
+  const token = getAccessToken();
+  if (!token) {
+    throw new ApiError('Не выполнен вход', 401);
+  }
+
+  const form = new FormData();
+  form.append('file', file);
+
+  const response = await fetch(`${API_URL}/chats/${chatId}/attachments`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const details = await safeJson(response);
+    const message =
+      typeof details === 'object' &&
+      details &&
+      'message' in details &&
+      typeof details.message === 'string'
+        ? details.message
+        : `Ошибка загрузки файла (${response.status})`;
+    throw new ApiError(message, response.status, details);
+  }
+
+  return (await response.json()) as MessageItem & { attachments: AttachmentItem[] };
+}

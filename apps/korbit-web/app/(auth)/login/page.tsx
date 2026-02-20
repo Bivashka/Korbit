@@ -31,7 +31,7 @@ export default function LoginPage() {
       router.replace('/chats');
     } catch (rawError) {
       const message =
-        rawError instanceof ApiError ? rawError.message : 'Login failed';
+        rawError instanceof ApiError ? rawError.message : 'Ошибка входа';
       setError(message);
     } finally {
       setSubmitting(false);
@@ -42,11 +42,11 @@ export default function LoginPage() {
     <main className="auth-layout">
       <section className="card">
         <h1>Korbit</h1>
-        <p className="muted">Private messenger login</p>
+        <p className="muted">Вход в приватный мессенджер</p>
 
         <form onSubmit={onSubmit} className="column">
           <label>
-            Username
+            Логин
             <input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
@@ -57,12 +57,12 @@ export default function LoginPage() {
           </label>
 
           <label>
-            Password
+            Пароль
             <input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Password"
+              placeholder="Введите пароль"
               autoComplete="current-password"
               required
             />
@@ -71,17 +71,16 @@ export default function LoginPage() {
           {error ? <p className="error">{error}</p> : null}
 
           <button type="submit" disabled={submitting}>
-            {submitting ? 'Signing in...' : 'Sign in'}
+            {submitting ? 'Вход...' : 'Войти'}
           </button>
         </form>
 
         {registrationMode !== 'admin_only' ? (
           <p className="muted">
-            No account yet? <Link href="/register">Create via invite</Link>
+            Нет аккаунта? <Link href="/register">Зарегистрироваться по инвайту</Link>
           </p>
         ) : null}
       </section>
     </main>
   );
 }
-

@@ -5,6 +5,10 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import { mkdir } from 'fs/promises';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -29,6 +33,25 @@ async function bootstrap() {
   await app.register(cors, {
     origin: corsOrigin.split(',').map((origin) => origin.trim()),
     credentials: true,
+  });
+
+  const maxUploadSize = Number(
+    configService.get<string>('MAX_UPLOAD_SIZE', `${10 * 1024 * 1024}`),
+  );
+  await app.register(multipart, {
+    limits: {
+      fileSize: maxUploadSize,
+      files: 1,
+    },
+  });
+
+  const uploadDir = configService.get<string>('UPLOAD_DIR', 'uploads');
+  const uploadRoot = join(process.cwd(), uploadDir);
+  await mkdir(uploadRoot, { recursive: true });
+
+  await app.register(fastifyStatic, {
+    root: uploadRoot,
+    prefix: '/uploads/',
   });
 
   const prisma = app.get(PrismaService);

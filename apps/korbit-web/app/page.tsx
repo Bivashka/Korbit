@@ -15,6 +15,5 @@ export default function HomePage() {
     router.replace('/login');
   }, [router]);
 
-  return <main className="centered">Loading Korbit...</main>;
+  return <main className="centered">Загрузка Korbit...</main>;
 }
-

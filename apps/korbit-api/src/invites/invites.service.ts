@@ -47,7 +47,7 @@ export class InvitesService {
       where: { id: inviteId },
     });
     if (!invite) {
-      throw new NotFoundException('Invite not found');
+      throw new NotFoundException('Инвайт не найден');
     }
 
     return this.prisma.invite.update({
@@ -72,4 +72,3 @@ export class InvitesService {
       .toUpperCase()}`;
   }
 }
-

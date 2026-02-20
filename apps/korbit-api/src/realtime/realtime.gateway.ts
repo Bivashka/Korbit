@@ -20,6 +20,10 @@ import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReadReceiptDto } from './dto/read-receipt.dto';
 import { TypingDto } from './dto/typing.dto';
+import { CallOfferDto } from './dto/call/call-offer.dto';
+import { CallAnswerDto } from './dto/call/call-answer.dto';
+import { CallIceCandidateDto } from './dto/call/call-ice-candidate.dto';
+import { CallEndDto } from './dto/call/call-end.dto';
 
 type SocketUser = JwtPayload;
 
@@ -126,7 +130,7 @@ export class RealtimeGateway
     const user = this.getClientUser(client);
     const hasAccess = await this.isMember(body.chatId, user.sub);
     if (!hasAccess) {
-      throw new WsException('Forbidden chat');
+      throw new WsException('Нет доступа к чату');
     }
 
     const payload = {
@@ -148,7 +152,7 @@ export class RealtimeGateway
     const user = this.getClientUser(client);
     const hasAccess = await this.isMember(body.chatId, user.sub);
     if (!hasAccess) {
-      throw new WsException('Forbidden chat');
+      throw new WsException('Нет доступа к чату');
     }
 
     let messageId = body.messageId;
@@ -167,7 +171,7 @@ export class RealtimeGateway
         select: { chatId: true },
       });
       if (!message || message.chatId !== body.chatId) {
-        throw new WsException('Message does not belong to chat');
+        throw new WsException('Сообщение не относится к этому чату');
       }
     }
 
@@ -193,6 +197,91 @@ export class RealtimeGateway
     return payload;
   }
 
+  @SubscribeMessage('call_offer')
+  async handleCallOffer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: CallOfferDto,
+  ) {
+    const user = this.getClientUser(client);
+    const hasAccess = await this.isMember(body.chatId, user.sub);
+    if (!hasAccess) {
+      throw new WsException('Нет доступа к чату');
+    }
+
+    const payload = {
+      chatId: body.chatId,
+      senderId: user.sub,
+      type: body.type,
+      sdp: body.sdp,
+      at: new Date().toISOString(),
+    };
+
+    client.to(this.chatRoom(body.chatId)).emit('call_offer', payload);
+    return { ok: true };
+  }
+
+  @SubscribeMessage('call_answer')
+  async handleCallAnswer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: CallAnswerDto,
+  ) {
+    const user = this.getClientUser(client);
+    const hasAccess = await this.isMember(body.chatId, user.sub);
+    if (!hasAccess) {
+      throw new WsException('Нет доступа к чату');
+    }
+
+    const payload = {
+      chatId: body.chatId,
+      senderId: user.sub,
+      sdp: body.sdp,
+      at: new Date().toISOString(),
+    };
+    client.to(this.chatRoom(body.chatId)).emit('call_answer', payload);
+    return { ok: true };
+  }
+
+  @SubscribeMessage('call_ice_candidate')
+  async handleCallIceCandidate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: CallIceCandidateDto,
+  ) {
+    const user = this.getClientUser(client);
+    const hasAccess = await this.isMember(body.chatId, user.sub);
+    if (!hasAccess) {
+      throw new WsException('Нет доступа к чату');
+    }
+
+    const payload = {
+      chatId: body.chatId,
+      senderId: user.sub,
+      candidate: body.candidate,
+      at: new Date().toISOString(),
+    };
+    client.to(this.chatRoom(body.chatId)).emit('call_ice_candidate', payload);
+    return { ok: true };
+  }
+
+  @SubscribeMessage('call_end')
+  async handleCallEnd(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: CallEndDto,
+  ) {
+    const user = this.getClientUser(client);
+    const hasAccess = await this.isMember(body.chatId, user.sub);
+    if (!hasAccess) {
+      throw new WsException('Нет доступа к чату');
+    }
+
+    const payload = {
+      chatId: body.chatId,
+      senderId: user.sub,
+      at: new Date().toISOString(),
+    };
+    this.server.to(this.chatRoom(body.chatId)).emit('call_end', payload);
+    return { ok: true };
+  }
+
   emitNewMessage(
     chatId: string,
     message: {
@@ -208,12 +297,25 @@ export class RealtimeGateway
         displayName: string | null;
         avatarUrl: string | null;
       };
+      attachments: Array<{
+        id: string;
+        messageId: string;
+        fileName: string;
+        mimeType: string;
+        size: number;
+        url: string;
+        createdAt: Date;
+      }>;
     },
   ) {
     this.server.to(this.chatRoom(chatId)).emit('new_message', {
       ...message,
       createdAt: message.createdAt.toISOString(),
       updatedAt: message.updatedAt.toISOString(),
+      attachments: message.attachments.map((attachment) => ({
+        ...attachment,
+        createdAt: attachment.createdAt.toISOString(),
+      })),
     });
   }
 
@@ -238,7 +340,7 @@ export class RealtimeGateway
   private getClientUser(client: Socket): SocketUser {
     const user = client.data.user as SocketUser | undefined;
     if (!user) {
-      throw new WsException('Unauthorized');
+      throw new WsException('Не авторизован');
     }
     return user;
   }
@@ -268,7 +370,7 @@ export class RealtimeGateway
       (typeof handshakeToken === 'string' ? handshakeToken : undefined) ||
       bearerToken;
     if (!token) {
-      throw new WsException('Missing auth token');
+      throw new WsException('Отсутствует токен авторизации');
     }
 
     const payload = await this.jwtService.verifyAsync<{
@@ -291,4 +393,3 @@ export class RealtimeGateway
     return `user:${userId}`;
   }
 }
-

@@ -24,6 +24,7 @@ export type MessageItem = {
   createdAt: string;
   updatedAt: string;
   sender: ChatPeer;
+  attachments?: AttachmentItem[];
 };
 
 export type ChatItem = {
@@ -34,6 +35,16 @@ export type ChatItem = {
   lastMessage: MessageItem | null;
 };
 
+export type AttachmentItem = {
+  id: string;
+  messageId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: string;
+};
+
 export type AuthPayload = {
   accessToken: string;
   refreshToken: string;
@@ -41,4 +52,3 @@ export type AuthPayload = {
   refreshTokenTtl: number;
   user: UserProfile;
 };
-
