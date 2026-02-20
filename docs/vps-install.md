@@ -38,6 +38,15 @@ Optional variables:
 - `KORBIT_ADMIN_USERNAME` (default `admin`)
 - `KORBIT_ADMIN_PASSWORD` (if omitted, auto-generated)
 
+If you only have an IP and no domain:
+
+```bash
+KORBIT_ENABLE_SSL=true \
+curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | bash
+```
+
+In this mode the script automatically uses `<PUBLIC_IP>.sslip.io` for Let's Encrypt.
+
 ## Check service state
 
 ```bash

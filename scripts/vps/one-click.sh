@@ -208,8 +208,8 @@ configure_env_file() {
   fi
 
   if [[ "${ENABLE_SSL}" == "true" ]] && is_ipv4 "${HOST}"; then
-    warn "KORBIT_ENABLE_SSL=true requires a domain. Falling back to HTTP because host is an IP."
-    ENABLE_SSL="false"
+    HOST="${HOST}.sslip.io"
+    log "KORBIT_ENABLE_SSL=true with IP detected. Using ${HOST} for automatic TLS certificate."
   fi
 
   if [[ "${ENABLE_SSL}" == "true" ]]; then

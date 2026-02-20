@@ -28,3 +28,10 @@ KORBIT_ENABLE_SSL=true \
 KORBIT_LETSENCRYPT_EMAIL=admin@example.com \
 curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | bash
 ```
+
+No domain yet? Run with only SSL flag and script will auto-use `<YOUR_PUBLIC_IP>.sslip.io`:
+
+```bash
+KORBIT_ENABLE_SSL=true \
+curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | bash
+```
