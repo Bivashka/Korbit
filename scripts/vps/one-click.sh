@@ -272,7 +272,12 @@ deploy_stack() {
   [[ -f "${env_file}" ]] || die "Missing env file: ${env_file}"
 
   log "Building and starting Korbit containers"
-  "${DOCKER_CMD[@]}" compose --env-file "${env_file}" -f "${compose_file}" up -d --build
+  if ! "${DOCKER_CMD[@]}" compose --env-file "${env_file}" -f "${compose_file}" up -d --build; then
+    warn "Compose startup failed. Showing status and API logs."
+    "${DOCKER_CMD[@]}" compose --env-file "${env_file}" -f "${compose_file}" ps || true
+    "${DOCKER_CMD[@]}" compose --env-file "${env_file}" -f "${compose_file}" logs --tail=200 api || true
+    die "Korbit containers failed to start"
+  fi
 }
 
 configure_nginx() {

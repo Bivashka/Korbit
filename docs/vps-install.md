@@ -46,6 +46,14 @@ docker compose --env-file .env.vps -f docker-compose.vps.yml ps
 curl http://127.0.0.1:4000/health
 ```
 
+If `api` is unhealthy:
+
+```bash
+cd /opt/korbit
+docker compose --env-file .env.vps -f docker-compose.vps.yml logs --tail=200 api
+docker compose --env-file .env.vps -f docker-compose.vps.yml ps
+```
+
 ## Update later
 
 ```bash
@@ -66,4 +74,3 @@ cd /opt/korbit
 docker compose --env-file .env.vps -f docker-compose.vps.yml logs -f api
 docker compose --env-file .env.vps -f docker-compose.vps.yml logs -f web
 ```
-
