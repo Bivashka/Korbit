@@ -11,3 +11,20 @@ Step 1 implementation includes:
 See full architecture, API contract, data model and runbook:
 - `docs/step1-architecture.md`
 - `docs/vps-install.md`
+
+## One-Click VPS Deploy
+
+On Ubuntu VPS you can deploy everything automatically with one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | bash
+```
+
+Optional env overrides:
+
+```bash
+KORBIT_HOST=chat.example.com \
+KORBIT_ENABLE_SSL=true \
+KORBIT_LETSENCRYPT_EMAIL=admin@example.com \
+curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | bash
+```
