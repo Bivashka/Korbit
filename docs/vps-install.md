@@ -25,10 +25,11 @@ Notes:
 Use your own domain and automatic TLS:
 
 ```bash
-KORBIT_HOST=chat.example.com \
-KORBIT_ENABLE_SSL=true \
-KORBIT_LETSENCRYPT_EMAIL=admin@example.com \
-curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | \
+env KORBIT_HOST=chat.example.com \
+    KORBIT_ENABLE_SSL=true \
+    KORBIT_LETSENCRYPT_EMAIL=admin@example.com \
+    bash
 ```
 
 Optional variables:
@@ -41,8 +42,8 @@ Optional variables:
 If you only have an IP and no domain:
 
 ```bash
-KORBIT_ENABLE_SSL=true \
-curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Bivashka/Korbit/main/scripts/vps/one-click.sh | \
+env KORBIT_ENABLE_SSL=true bash
 ```
 
 In this mode the script automatically uses `<PUBLIC_IP>.sslip.io` for Let's Encrypt.
