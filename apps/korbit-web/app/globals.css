@@ -286,9 +286,36 @@ button:disabled {
   word-break: break-word;
 }
 
+.message-meta-quote {
+  border-left: 3px solid #86b8f2;
+  background: rgba(210, 228, 245, 0.4);
+  border-radius: 8px;
+  padding: 0.3rem 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.2rem;
+}
+
+.message-meta-quote strong {
+  font-size: 0.75rem;
+  color: #416a93;
+}
+
+.message-meta-quote span {
+  font-size: 0.78rem;
+  color: #4b5f72;
+}
+
 .message small {
   color: #6b7f92;
   font-size: 0.74rem;
+}
+
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 
 .message.own {
@@ -308,6 +335,30 @@ button:disabled {
   color: #60778c;
   font-size: 0.86rem;
   padding: 0 1rem 0.2rem;
+}
+
+.composer-context {
+  margin: 0 0.8rem;
+  border: 1px solid #cfe0f1;
+  background: #f4f9ff;
+  border-radius: 12px;
+  padding: 0.5rem 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.composer-context p {
+  margin: 0.2rem 0 0;
+  color: #5a6f83;
+  font-size: 0.82rem;
+}
+
+.composer-context-actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
 }
 
 .composer-attachments,
@@ -332,6 +383,28 @@ button:disabled {
 
 .composer button {
   border-radius: 18px;
+}
+
+.link-button {
+  background: transparent;
+  color: #3a6b9a;
+  border: none;
+  padding: 0.1rem 0.2rem;
+  border-radius: 6px;
+}
+
+.link-button:hover {
+  background: rgba(51, 144, 236, 0.1);
+  color: #2e5a85;
+}
+
+.danger-link {
+  color: #b91c1c;
+}
+
+.danger-link:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #991b1b;
 }
 
 .hidden-file-input {

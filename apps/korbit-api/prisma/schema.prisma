@@ -120,19 +120,30 @@ model ChatMember {
 }
 
 model Message {
-  id            String       @id @default(cuid())
-  chatId        String
-  senderId      String
-  content       String
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  chat          Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender        User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  readByMembers ChatMember[] @relation("LastReadMessage")
-  attachments   Attachment[]
+  id                     String       @id @default(cuid())
+  chatId                 String
+  senderId               String
+  content                String
+  isDeleted              Boolean      @default(false)
+  deletedAt              DateTime?
+  editedAt               DateTime?
+  replyToMessageId       String?
+  forwardedFromMessageId String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  chat                   Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender                 User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  readByMembers          ChatMember[] @relation("LastReadMessage")
+  attachments            Attachment[]
+  replyToMessage         Message?     @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies                Message[]    @relation("MessageReplies")
+  forwardedFromMessage   Message?     @relation("MessageForwards", fields: [forwardedFromMessageId], references: [id], onDelete: SetNull)
+  forwards               Message[]    @relation("MessageForwards")
 
   @@index([chatId, createdAt])
   @@index([senderId])
+  @@index([replyToMessageId])
+  @@index([forwardedFromMessageId])
 }
 
 model Attachment {

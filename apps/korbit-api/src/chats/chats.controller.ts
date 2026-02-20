@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Patch,
   Param,
   Post,
   Query,
@@ -20,9 +22,11 @@ import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ChatsService } from './chats.service';
 import { CreateDirectChatDto } from './dto/create-direct-chat.dto';
+import { ForwardMessageDto } from './dto/forward-message.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { UpdateMessageDto } from './dto/update-message.dto';
 
 @Controller('chats')
 export class ChatsController {
@@ -63,6 +67,57 @@ export class ChatsController {
     const message = await this.chatsService.sendMessage(user.sub, chatId, dto);
     this.realtimeGateway.emitNewMessage(chatId, message);
     return message;
+  }
+
+  @Post(':chatId/messages/:messageId/forward')
+  async forwardMessage(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: ForwardMessageDto,
+  ) {
+    const message = await this.chatsService.forwardMessage(
+      user.sub,
+      chatId,
+      messageId,
+      dto.targetChatId,
+    );
+    this.realtimeGateway.emitNewMessage(dto.targetChatId, message);
+    return message;
+  }
+
+  @Patch(':chatId/messages/:messageId')
+  async updateMessage(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: UpdateMessageDto,
+  ) {
+    const updated = await this.chatsService.updateMessage(
+      user.sub,
+      user.role,
+      chatId,
+      messageId,
+      dto,
+    );
+    this.realtimeGateway.emitMessageUpdated(chatId, updated);
+    return updated;
+  }
+
+  @Delete(':chatId/messages/:messageId')
+  async deleteMessage(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    const deleted = await this.chatsService.deleteMessage(
+      user.sub,
+      user.role,
+      chatId,
+      messageId,
+    );
+    this.realtimeGateway.emitMessageUpdated(chatId, deleted);
+    return deleted;
   }
 
   @Post(':chatId/read')

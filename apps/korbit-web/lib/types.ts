@@ -16,15 +16,31 @@ export type ChatPeer = {
   avatarUrl: string | null;
 };
 
+export type MessageReference = {
+  id: string;
+  chatId: string;
+  senderId: string;
+  content: string;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  sender: ChatPeer;
+};
+
 export type MessageItem = {
   id: string;
   chatId: string;
   senderId: string;
   content: string;
+  isDeleted: boolean;
+  deletedAt: string | null;
+  editedAt: string | null;
   createdAt: string;
   updatedAt: string;
   sender: ChatPeer;
   attachments?: AttachmentItem[];
+  replyToMessage?: MessageReference | null;
+  forwardedFromMessage?: MessageReference | null;
 };
 
 export type ChatItem = {

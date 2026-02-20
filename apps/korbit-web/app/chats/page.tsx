@@ -6,6 +6,8 @@ import { io, Socket } from 'socket.io-client';
 import {
   ApiError,
   createDirectChat,
+  deleteMessage,
+  forwardMessage,
   getMe,
   getSocketConfig,
   isAuthenticated,
@@ -14,6 +16,7 @@ import {
   logout,
   markRead,
   sendMessage,
+  updateMessage,
   uploadAttachment,
 } from '../../lib/api';
 import { getAccessToken } from '../../lib/session';
@@ -83,6 +86,11 @@ export default function ChatsPage() {
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [presence, setPresence] = useState<PresenceState>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<MessageItem | null>(null);
+  const [forwardSourceMessage, setForwardSourceMessage] = useState<MessageItem | null>(
+    null,
+  );
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [callType, setCallType] = useState<CallType | null>(null);
@@ -212,6 +220,15 @@ export default function ChatsPage() {
 
     void loadMessages();
   }, [activeChatId]);
+
+  useEffect(() => {
+    setReplyToMessage((previous) =>
+      previous && previous.chatId === activeChatId ? previous : null,
+    );
+    setEditingMessageId((previous) =>
+      previous && messages.some((item) => item.id === previous) ? previous : null,
+    );
+  }, [activeChatId, messages]);
 
   useEffect(() => {
     if (inCall) {
@@ -401,13 +418,23 @@ export default function ChatsPage() {
 
         if (message.chatId === activeChatIdRef.current) {
           setMessages((previous) => {
-            if (previous.some((item) => item.id === message.id)) {
-              return previous;
+            const existingIndex = previous.findIndex((item) => item.id === message.id);
+            if (existingIndex >= 0) {
+              const next = [...previous];
+              next[existingIndex] = message;
+              return next;
             }
             return [...previous, message];
           });
           void markRead(message.chatId, message.id).catch(() => undefined);
         }
+      },
+    );
+
+    socket.on(
+      'message_updated',
+      (message: MessageItem & { createdAt: string; updatedAt: string }) => {
+        applyUpdatedMessage(message);
       },
     );
 
@@ -554,8 +581,11 @@ export default function ChatsPage() {
 
   function upsertLocalMessage(message: MessageItem) {
     setMessages((previous) => {
-      if (previous.some((item) => item.id === message.id)) {
-        return previous;
+      const existingIndex = previous.findIndex((item) => item.id === message.id);
+      if (existingIndex >= 0) {
+        const next = [...previous];
+        next[existingIndex] = message;
+        return next;
       }
       return [...previous, message];
     });
@@ -573,6 +603,37 @@ export default function ChatsPage() {
     });
   }
 
+  function applyUpdatedMessage(message: MessageItem) {
+    setMessages((previous) =>
+      previous.map((item) => (item.id === message.id ? message : item)),
+    );
+
+    setChats((previous) =>
+      previous.map((chat) => {
+        if (chat.id !== message.chatId || !chat.lastMessage) {
+          return chat;
+        }
+        if (chat.lastMessage.id !== message.id) {
+          return chat;
+        }
+        return {
+          ...chat,
+          lastMessage: message,
+        };
+      }),
+    );
+
+    if (message.isDeleted) {
+      setReplyToMessage((previous) =>
+        previous?.id === message.id ? null : previous,
+      );
+      setForwardSourceMessage((previous) =>
+        previous?.id === message.id ? null : previous,
+      );
+      setEditingMessageId((previous) => (previous === message.id ? null : previous));
+    }
+  }
+
   async function onSendMessage(event: FormEvent) {
     event.preventDefault();
     if (!activeChatId) {
@@ -587,9 +648,18 @@ export default function ChatsPage() {
     setSending(true);
     setError(null);
     try {
-      const created = await sendMessage(activeChatId, content);
-      upsertLocalMessage(created);
+      if (editingMessageId) {
+        const updated = await updateMessage(activeChatId, editingMessageId, content);
+        applyUpdatedMessage(updated);
+        setEditingMessageId(null);
+      } else {
+        const created = await sendMessage(activeChatId, content, {
+          replyToMessageId: replyToMessage?.id,
+        });
+        upsertLocalMessage(created);
+      }
       setMessageInput('');
+      setReplyToMessage(null);
       socketRef.current?.emit('typing', { chatId: activeChatId, isTyping: false });
     } catch (rawError) {
       setError(rawError instanceof Error ? rawError.message : 'Ошибка отправки');
@@ -615,6 +685,71 @@ export default function ChatsPage() {
       setError(rawError instanceof Error ? rawError.message : 'Ошибка загрузки файла');
     } finally {
       setUploading(false);
+    }
+  }
+
+  function onReply(message: MessageItem) {
+    setReplyToMessage(message);
+    setForwardSourceMessage(null);
+    setEditingMessageId(null);
+  }
+
+  function onEditMessage(message: MessageItem) {
+    if (message.isDeleted) {
+      return;
+    }
+    setEditingMessageId(message.id);
+    setReplyToMessage(null);
+    setForwardSourceMessage(null);
+    setMessageInput(message.content);
+  }
+
+  function onForwardSelect(message: MessageItem) {
+    if (message.isDeleted) {
+      return;
+    }
+    setForwardSourceMessage(message);
+    setReplyToMessage(null);
+    setEditingMessageId(null);
+  }
+
+  async function onDeleteMessage(message: MessageItem) {
+    if (!activeChatId || message.isDeleted) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const updated = await deleteMessage(activeChatId, message.id);
+      applyUpdatedMessage(updated);
+      if (editingMessageId === message.id) {
+        setEditingMessageId(null);
+        setMessageInput('');
+      }
+      if (replyToMessage?.id === message.id) {
+        setReplyToMessage(null);
+      }
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка удаления сообщения');
+    }
+  }
+
+  async function onForwardToActiveChat() {
+    if (!activeChatId || !forwardSourceMessage) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const created = await forwardMessage(
+        forwardSourceMessage.chatId,
+        forwardSourceMessage.id,
+        activeChatId,
+      );
+      upsertLocalMessage(created);
+      setForwardSourceMessage(null);
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка пересылки сообщения');
     }
   }
 
@@ -914,6 +1049,27 @@ export default function ChatsPage() {
     return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
   }
 
+  function messageAuthorLabel(message: MessageItem | MessageItem['replyToMessage']) {
+    if (!message) {
+      return 'Пользователь';
+    }
+    if (message.senderId === me?.id) {
+      return 'Вы';
+    }
+    return message.sender.displayName || message.sender.username;
+  }
+
+  function messageSnippet(content: string) {
+    const normalized = content.trim();
+    if (!normalized) {
+      return '[пусто]';
+    }
+    if (normalized.length <= 120) {
+      return normalized;
+    }
+    return `${normalized.slice(0, 117)}...`;
+  }
+
   function renderAttachments(attachments?: AttachmentItem[]) {
     if (!attachments || attachments.length === 0) {
       return null;
@@ -1129,15 +1285,81 @@ export default function ChatsPage() {
             <div className="messages">
               {messages.map((message) => {
                 const own = message.senderId === me?.id;
+                const canManage = own || me?.role === 'ADMIN';
                 return (
                   <article
                     key={message.id}
                     className={`message ${own ? 'own' : 'peer'}`}
                   >
+                    {message.forwardedFromMessage ? (
+                      <div className="message-meta-quote">
+                        <strong>
+                          Переслано от {messageAuthorLabel(message.forwardedFromMessage)}
+                        </strong>
+                        <span>
+                          {message.forwardedFromMessage.isDeleted
+                            ? 'Сообщение удалено'
+                            : messageSnippet(message.forwardedFromMessage.content)}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    {message.replyToMessage ? (
+                      <div className="message-meta-quote">
+                        <strong>Ответ для {messageAuthorLabel(message.replyToMessage)}</strong>
+                        <span>
+                          {message.replyToMessage.isDeleted
+                            ? 'Сообщение удалено'
+                            : messageSnippet(message.replyToMessage.content)}
+                        </span>
+                      </div>
+                    ) : null}
+
                     <p>{message.content}</p>
                     {renderAttachments(message.attachments)}
+
+                    <div className="message-actions">
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => onReply(message)}
+                        disabled={message.isDeleted}
+                      >
+                        Ответить
+                      </button>
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => onForwardSelect(message)}
+                        disabled={message.isDeleted}
+                      >
+                        Переслать
+                      </button>
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => onEditMessage(message)}
+                          disabled={message.isDeleted}
+                        >
+                          Изменить
+                        </button>
+                      ) : null}
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="link-button danger-link"
+                          onClick={() => void onDeleteMessage(message)}
+                          disabled={message.isDeleted}
+                        >
+                          Удалить
+                        </button>
+                      ) : null}
+                    </div>
+
                     <small>
-                      {message.sender.displayName || message.sender.username} |{' '}
+                      {messageAuthorLabel(message)}
+                      {message.editedAt ? ' (изменено)' : ''} |{' '}
                       {new Date(message.createdAt).toLocaleTimeString()}
                     </small>
                   </article>
@@ -1146,6 +1368,64 @@ export default function ChatsPage() {
             </div>
 
             <div className="typing-indicator">{userTypingLabel()}</div>
+
+            {replyToMessage ? (
+              <div className="composer-context">
+                <div>
+                  <strong>Ответ на {messageAuthorLabel(replyToMessage)}</strong>
+                  <p>{messageSnippet(replyToMessage.content)}</p>
+                </div>
+                <button type="button" className="link-button" onClick={() => setReplyToMessage(null)}>
+                  Отменить
+                </button>
+              </div>
+            ) : null}
+
+            {editingMessageId ? (
+              <div className="composer-context">
+                <div>
+                  <strong>Редактирование сообщения</strong>
+                  <p>После сохранения участники увидят пометку "изменено"</p>
+                </div>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    setEditingMessageId(null);
+                    setMessageInput('');
+                  }}
+                >
+                  Отменить
+                </button>
+              </div>
+            ) : null}
+
+            {forwardSourceMessage ? (
+              <div className="composer-context">
+                <div>
+                  <strong>
+                    Пересылка от {messageAuthorLabel(forwardSourceMessage)}
+                  </strong>
+                  <p>{messageSnippet(forwardSourceMessage.content)}</p>
+                </div>
+                <div className="composer-context-actions">
+                  <button
+                    type="button"
+                    onClick={() => void onForwardToActiveChat()}
+                    disabled={uploading}
+                  >
+                    Переслать сюда
+                  </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => setForwardSourceMessage(null)}
+                  >
+                    Отменить
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="composer-attachments">
               <input
@@ -1199,11 +1479,15 @@ export default function ChatsPage() {
               <input
                 value={messageInput}
                 onChange={(event) => onTyping(event.target.value)}
-                placeholder="Введите сообщение..."
+                placeholder={
+                  editingMessageId
+                    ? 'Измените сообщение...'
+                    : 'Введите сообщение...'
+                }
                 disabled={sending}
               />
               <button type="submit" disabled={sending || !messageInput.trim()}>
-                Отправить
+                {editingMessageId ? 'Сохранить' : 'Отправить'}
               </button>
             </form>
           </>

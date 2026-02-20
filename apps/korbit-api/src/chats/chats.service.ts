@@ -4,50 +4,80 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDirectChatDto } from './dto/create-direct-chat.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { UpdateMessageDto } from './dto/update-message.dto';
 
 @Injectable()
 export class ChatsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private userSelect() {
+    return {
+      id: true,
+      username: true,
+      displayName: true,
+      avatarUrl: true,
+    } satisfies Prisma.UserSelect;
+  }
+
+  private messageReferenceSelect() {
+    return {
+      id: true,
+      chatId: true,
+      senderId: true,
+      content: true,
+      isDeleted: true,
+      createdAt: true,
+      updatedAt: true,
+      sender: {
+        select: this.userSelect(),
+      },
+    } satisfies Prisma.MessageSelect;
+  }
+
+  private messageInclude() {
+    return {
+      sender: {
+        select: this.userSelect(),
+      },
+      attachments: true,
+      replyToMessage: {
+        select: this.messageReferenceSelect(),
+      },
+      forwardedFromMessage: {
+        select: this.messageReferenceSelect(),
+      },
+    } satisfies Prisma.MessageInclude;
+  }
+
+  private directChatInclude() {
+    return {
+      members: {
+        include: {
+          user: {
+            select: this.userSelect(),
+          },
+        },
+      },
+      messages: {
+        take: 1,
+        orderBy: { createdAt: 'desc' as const },
+        include: this.messageInclude(),
+      },
+    } satisfies Prisma.ChatInclude;
+  }
 
   async listChats(userId: string) {
     const memberships = await this.prisma.chatMember.findMany({
       where: { userId },
       include: {
         chat: {
-          include: {
-            members: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    username: true,
-                    displayName: true,
-                    avatarUrl: true,
-                  },
-                },
-              },
-            },
-            messages: {
-              take: 1,
-              orderBy: { createdAt: 'desc' },
-              include: {
-                sender: {
-                  select: {
-                    id: true,
-                    username: true,
-                    displayName: true,
-                  },
-                },
-                attachments: true,
-              },
-            },
-          },
+          include: this.directChatInclude(),
         },
       },
       orderBy: {
@@ -73,9 +103,9 @@ export class ChatsService {
     const username = dto.username.trim().toLowerCase();
     const target = await this.prisma.user.findUnique({
       where: { username },
-      select: { id: true, username: true },
+      select: { id: true },
     });
-      if (!target) {
+    if (!target) {
       throw new NotFoundException('Пользователь не найден');
     }
     if (target.id === userId) {
@@ -88,34 +118,7 @@ export class ChatsService {
       where: { userAId_userBId: { userAId, userBId } },
       include: {
         chat: {
-          include: {
-            members: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    username: true,
-                    displayName: true,
-                    avatarUrl: true,
-                  },
-                },
-              },
-            },
-            messages: {
-              take: 1,
-              orderBy: { createdAt: 'desc' },
-              include: {
-                sender: {
-                  select: {
-                    id: true,
-                    username: true,
-                    displayName: true,
-                  },
-                },
-                attachments: true,
-              },
-            },
-          },
+          include: this.directChatInclude(),
         },
       },
     });
@@ -149,34 +152,7 @@ export class ChatsService {
 
         return tx.chat.findUniqueOrThrow({
           where: { id: createdChat.id },
-          include: {
-            members: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    username: true,
-                    displayName: true,
-                    avatarUrl: true,
-                  },
-                },
-              },
-            },
-            messages: {
-              take: 1,
-              orderBy: { createdAt: 'desc' },
-              include: {
-                sender: {
-                  select: {
-                    id: true,
-                    username: true,
-                    displayName: true,
-                  },
-                },
-                attachments: true,
-              },
-            },
-          },
+          include: this.directChatInclude(),
         });
       });
 
@@ -190,34 +166,7 @@ export class ChatsService {
           where: { userAId_userBId: { userAId, userBId } },
           include: {
             chat: {
-              include: {
-                members: {
-                  include: {
-                    user: {
-                      select: {
-                        id: true,
-                        username: true,
-                        displayName: true,
-                        avatarUrl: true,
-                      },
-                    },
-                  },
-                },
-                messages: {
-                  take: 1,
-                  orderBy: { createdAt: 'desc' },
-                  include: {
-                    sender: {
-                      select: {
-                        id: true,
-                        username: true,
-                        displayName: true,
-                      },
-                    },
-                    attachments: true,
-                  },
-                },
-              },
+              include: this.directChatInclude(),
             },
           },
         });
@@ -247,17 +196,7 @@ export class ChatsService {
             skip: 1,
           }
         : {}),
-      include: {
-        sender: {
-          select: {
-            id: true,
-            username: true,
-            displayName: true,
-            avatarUrl: true,
-          },
-        },
-        attachments: true,
-      },
+      include: this.messageInclude(),
     });
 
     return {
@@ -268,9 +207,42 @@ export class ChatsService {
 
   async sendMessage(userId: string, chatId: string, dto: SendMessageDto) {
     await this.assertMember(chatId, userId);
+
     const content = dto.content.trim();
     if (!content) {
       throw new BadRequestException('Сообщение не может быть пустым');
+    }
+
+    const replyToMessageId = dto.replyToMessageId?.trim() || undefined;
+    if (replyToMessageId) {
+      const replyMessage = await this.prisma.message.findUnique({
+        where: { id: replyToMessageId },
+        select: { chatId: true, isDeleted: true },
+      });
+      if (!replyMessage || replyMessage.chatId !== chatId) {
+        throw new BadRequestException('Сообщение для ответа не найдено');
+      }
+      if (replyMessage.isDeleted) {
+        throw new BadRequestException('Нельзя отвечать на удалённое сообщение');
+      }
+    }
+
+    const forwardedFromMessageId = dto.forwardedFromMessageId?.trim() || undefined;
+    if (forwardedFromMessageId) {
+      const sourceMessage = await this.prisma.message.findUnique({
+        where: { id: forwardedFromMessageId },
+        select: { chatId: true, isDeleted: true },
+      });
+      if (!sourceMessage) {
+        throw new BadRequestException('Исходное сообщение для пересылки не найдено');
+      }
+      if (sourceMessage.isDeleted) {
+        throw new BadRequestException('Нельзя переслать удалённое сообщение');
+      }
+      const hasAccess = await this.isMember(sourceMessage.chatId, userId);
+      if (!hasAccess) {
+        throw new ForbiddenException('Нет доступа к исходному сообщению');
+      }
     }
 
     const message = await this.prisma.$transaction(async (tx) => {
@@ -279,18 +251,10 @@ export class ChatsService {
           chatId,
           senderId: userId,
           content,
+          replyToMessageId,
+          forwardedFromMessageId,
         },
-        include: {
-          sender: {
-            select: {
-              id: true,
-              username: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
-          attachments: true,
-        },
+        include: this.messageInclude(),
       });
 
       await tx.chat.update({
@@ -335,17 +299,7 @@ export class ChatsService {
             },
           },
         },
-        include: {
-          sender: {
-            select: {
-              id: true,
-              username: true,
-              displayName: true,
-              avatarUrl: true,
-            },
-          },
-          attachments: true,
-        },
+        include: this.messageInclude(),
       });
 
       await tx.chat.update({
@@ -357,6 +311,176 @@ export class ChatsService {
     });
 
     return message;
+  }
+
+  async forwardMessage(
+    userId: string,
+    sourceChatId: string,
+    messageId: string,
+    targetChatId: string,
+  ) {
+    await this.assertMember(sourceChatId, userId);
+    await this.assertMember(targetChatId, userId);
+
+    const source = await this.prisma.message.findFirst({
+      where: {
+        id: messageId,
+        chatId: sourceChatId,
+      },
+      include: {
+        attachments: true,
+      },
+    });
+    if (!source) {
+      throw new NotFoundException('Исходное сообщение не найдено');
+    }
+    if (source.isDeleted) {
+      throw new BadRequestException('Нельзя переслать удалённое сообщение');
+    }
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const forwarded = await tx.message.create({
+        data: {
+          chatId: targetChatId,
+          senderId: userId,
+          content: source.content,
+          forwardedFromMessageId: source.id,
+          attachments: source.attachments.length
+            ? {
+                create: source.attachments.map((attachment) => ({
+                  fileName: attachment.fileName,
+                  mimeType: attachment.mimeType,
+                  size: attachment.size,
+                  url: attachment.url,
+                })),
+              }
+            : undefined,
+        },
+        include: this.messageInclude(),
+      });
+
+      await tx.chat.update({
+        where: { id: targetChatId },
+        data: { updatedAt: new Date() },
+      });
+
+      return forwarded;
+    });
+
+    return created;
+  }
+
+  async updateMessage(
+    userId: string,
+    role: UserRole,
+    chatId: string,
+    messageId: string,
+    dto: UpdateMessageDto,
+  ) {
+    await this.assertMember(chatId, userId);
+
+    const existing = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        chatId: true,
+        senderId: true,
+        isDeleted: true,
+      },
+    });
+    if (!existing || existing.chatId !== chatId) {
+      throw new NotFoundException('Сообщение не найдено');
+    }
+    if (existing.isDeleted) {
+      throw new BadRequestException('Удалённое сообщение нельзя редактировать');
+    }
+    if (existing.senderId !== userId && role !== 'ADMIN') {
+      throw new ForbiddenException('Можно редактировать только свои сообщения');
+    }
+
+    const content = dto.content.trim();
+    if (!content) {
+      throw new BadRequestException('Сообщение не может быть пустым');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const message = await tx.message.update({
+        where: { id: messageId },
+        data: {
+          content,
+          editedAt: new Date(),
+        },
+        include: this.messageInclude(),
+      });
+
+      await tx.chat.update({
+        where: { id: chatId },
+        data: { updatedAt: new Date() },
+      });
+
+      return message;
+    });
+
+    return updated;
+  }
+
+  async deleteMessage(
+    userId: string,
+    role: UserRole,
+    chatId: string,
+    messageId: string,
+  ) {
+    await this.assertMember(chatId, userId);
+
+    const existing = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        chatId: true,
+        senderId: true,
+        isDeleted: true,
+      },
+    });
+    if (!existing || existing.chatId !== chatId) {
+      throw new NotFoundException('Сообщение не найдено');
+    }
+    if (existing.senderId !== userId && role !== 'ADMIN') {
+      throw new ForbiddenException('Можно удалять только свои сообщения');
+    }
+
+    if (existing.isDeleted) {
+      return this.prisma.message.findUniqueOrThrow({
+        where: { id: messageId },
+        include: this.messageInclude(),
+      });
+    }
+
+    const deletedMessage = await this.prisma.$transaction(async (tx) => {
+      await tx.attachment.deleteMany({
+        where: { messageId },
+      });
+
+      const message = await tx.message.update({
+        where: { id: messageId },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          editedAt: null,
+          content: 'Сообщение удалено',
+          replyToMessageId: null,
+        },
+        include: this.messageInclude(),
+      });
+
+      await tx.chat.update({
+        where: { id: chatId },
+        data: { updatedAt: new Date() },
+      });
+
+      return message;
+    });
+
+    return deletedMessage;
   }
 
   async markRead(userId: string, chatId: string, dto: MarkReadDto) {
@@ -442,25 +566,7 @@ export class ChatsService {
           avatarUrl: string | null;
         };
       }>;
-      messages: Array<{
-        id: string;
-        content: string;
-        createdAt: Date;
-        attachments: Array<{
-          id: string;
-          messageId: string;
-          fileName: string;
-          mimeType: string;
-          size: number;
-          url: string;
-          createdAt: Date;
-        }>;
-        sender: {
-          id: string;
-          username: string;
-          displayName: string | null;
-        };
-      }>;
+      messages: Array<Record<string, unknown>>;
     },
     userId: string,
   ) {

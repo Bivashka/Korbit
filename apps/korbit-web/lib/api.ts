@@ -209,10 +209,41 @@ export async function listMessages(chatId: string, cursor?: string) {
   );
 }
 
-export async function sendMessage(chatId: string, content: string) {
+export async function sendMessage(
+  chatId: string,
+  content: string,
+  options?: { replyToMessageId?: string; forwardedFromMessageId?: string },
+) {
   return request<MessageItem>(`/chats/${chatId}/messages`, {
     method: 'POST',
+    body: {
+      content,
+      ...options,
+    },
+  });
+}
+
+export async function updateMessage(chatId: string, messageId: string, content: string) {
+  return request<MessageItem>(`/chats/${chatId}/messages/${messageId}`, {
+    method: 'PATCH',
     body: { content },
+  });
+}
+
+export async function deleteMessage(chatId: string, messageId: string) {
+  return request<MessageItem>(`/chats/${chatId}/messages/${messageId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function forwardMessage(
+  sourceChatId: string,
+  messageId: string,
+  targetChatId: string,
+) {
+  return request<MessageItem>(`/chats/${sourceChatId}/messages/${messageId}/forward`, {
+    method: 'POST',
+    body: { targetChatId },
   });
 }
 
