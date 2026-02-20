@@ -1,0 +1,12 @@
+{
+  "name": "@korbit/korbit-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Korbit mobile scaffold. Integrate Expo in Step 2.\"",
+    "build": "echo \"Korbit mobile scaffold build placeholder\"",
+    "lint": "echo \"No lint yet\"",
+    "typecheck": "echo \"No typecheck yet\""
+  }
+}
+

@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: korbit_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: korbit
+      POSTGRES_USER: korbit
+      POSTGRES_PASSWORD: korbit
+    ports:
+      - '5432:5432'
+    volumes:
+      - korbit_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U korbit -d korbit']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: korbit_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/korbit-api/Dockerfile
+    container_name: korbit_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgresql://korbit:korbit@postgres:5432/korbit
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: http://localhost:3000
+      JWT_ACCESS_SECRET: korbit_access_secret_dev
+      JWT_REFRESH_SECRET: korbit_refresh_secret_dev
+      JWT_ACCESS_TTL: 900
+      JWT_REFRESH_TTL: 2592000
+      REGISTRATION_MODE: invite
+      ADMIN_BOOTSTRAP_ENABLED: 'true'
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: Admin123456
+    ports:
+      - '4000:4000'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:4000/health || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/korbit-web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+        NEXT_PUBLIC_REGISTRATION_MODE: invite
+    container_name: korbit_web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_REGISTRATION_MODE: invite
+    ports:
+      - '3000:3000'
+
+volumes:
+  korbit_postgres_data:
+

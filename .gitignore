@@ -1,0 +1,17 @@
+node_modules
+.pnpm-store
+.turbo
+.vscode
+dist
+coverage
+.DS_Store
+*.log
+*.local
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+apps/korbit-api/prisma/dev.db
+apps/korbit-api/prisma/dev.db-journal
+apps/korbit-web/.next

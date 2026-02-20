@@ -1,0 +1,12 @@
+{
+  "name": "@korbit/korbit-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Korbit desktop scaffold. Electron integration in Step 2.\"",
+    "build": "echo \"Korbit desktop scaffold build placeholder\"",
+    "lint": "echo \"No lint yet\"",
+    "typecheck": "echo \"No typecheck yet\""
+  }
+}
+

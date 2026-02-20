@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ChatType {
+  DIRECT
+  GROUP
+  CHANNEL
+}
+
+model User {
+  id           String       @id @default(cuid())
+  username     String       @unique
+  passwordHash String
+  displayName  String?
+  avatarUrl    String?
+  bio          String?
+  role         UserRole     @default(USER)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  sessions     Session[]
+  createdInvites Invite[]   @relation("InviteCreator")
+  memberships  ChatMember[]
+  messages     Message[]    @relation("MessageSender")
+  directChatsA DirectChat[] @relation("DirectChatA")
+  directChatsB DirectChat[] @relation("DirectChatB")
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Invite {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  createdById String
+  maxUses     Int       @default(1)
+  usesCount   Int       @default(0)
+  expiresAt   DateTime?
+  disabledAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   User      @relation("InviteCreator", fields: [createdById], references: [id], onDelete: Restrict)
+}
+
+model Chat {
+  id         String       @id @default(cuid())
+  type       ChatType     @default(DIRECT)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  members    ChatMember[]
+  messages   Message[]
+  directChat DirectChat?
+}
+
+model DirectChat {
+  id        String   @id @default(cuid())
+  chatId    String   @unique
+  userAId   String
+  userBId   String
+  createdAt DateTime @default(now())
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userA     User     @relation("DirectChatA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB     User     @relation("DirectChatB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+}
+
+model ChatMember {
+  id                String   @id @default(cuid())
+  chatId            String
+  userId            String
+  lastReadMessageId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  chat              Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessage   Message? @relation("LastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([chatId, userId])
+  @@index([userId])
+  @@index([lastReadMessageId])
+}
+
+model Message {
+  id            String       @id @default(cuid())
+  chatId        String
+  senderId      String
+  content       String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  chat          Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender        User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  readByMembers ChatMember[] @relation("LastReadMessage")
+
+  @@index([chatId, createdAt])
+  @@index([senderId])
+}
+
