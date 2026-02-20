@@ -48,3 +48,6 @@ env KORBIT_ENABLE_SSL=true \
 
 When ACME rate limits are hit on one zone, script will automatically retry other zones from:
 `KORBIT_IP_SSL_DOMAIN_FALLBACKS` (default `traefik.me,nip.io,sslip.io`).
+
+If all ACME zones are rate-limited, one-click automatically falls back to HTTP on IP and
+starts a Cloudflare Quick Tunnel, printing an `https://*.trycloudflare.com` URL.

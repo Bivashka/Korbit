@@ -10,10 +10,13 @@ ENABLE_SSL="${KORBIT_ENABLE_SSL:-false}"
 LETSENCRYPT_EMAIL="${KORBIT_LETSENCRYPT_EMAIL:-}"
 IP_SSL_DOMAIN="${KORBIT_IP_SSL_DOMAIN:-traefik.me}"
 IP_SSL_DOMAIN_FALLBACKS="${KORBIT_IP_SSL_DOMAIN_FALLBACKS:-traefik.me,nip.io,sslip.io}"
+ENABLE_TUNNEL_ON_HTTP_FALLBACK="${KORBIT_ENABLE_TUNNEL_ON_HTTP_FALLBACK:-true}"
+TUNNEL_CONTAINER_NAME="${KORBIT_TUNNEL_CONTAINER_NAME:-korbit_tunnel}"
 ADMIN_USERNAME="${KORBIT_ADMIN_USERNAME:-admin}"
 ADMIN_PASSWORD="${KORBIT_ADMIN_PASSWORD:-}"
 AUTO_IP_SSL_HOST="false"
 HOST_IP_VALUE=""
+TUNNEL_URL=""
 
 log() {
   printf '[%s] %s\n' "${SCRIPT_NAME}" "$*"
@@ -396,10 +399,44 @@ enable_ssl_if_needed() {
     configure_nginx
     set_env_var "CORS_ORIGIN" "http://${HOST}" "${INSTALL_DIR}/.env.vps"
     set_env_var "NEXT_PUBLIC_API_URL" "/api" "${INSTALL_DIR}/.env.vps"
+    start_quick_tunnel
     return 0
   fi
 
   die "Failed to issue TLS certificate for ${HOST}. Check /var/log/letsencrypt/letsencrypt.log"
+}
+
+start_quick_tunnel() {
+  if [[ "${ENABLE_TUNNEL_ON_HTTP_FALLBACK}" != "true" ]]; then
+    return 0
+  fi
+
+  log "Starting HTTPS quick tunnel (Cloudflare) for HTTP fallback"
+  "${DOCKER_CMD[@]}" rm -f "${TUNNEL_CONTAINER_NAME}" >/dev/null 2>&1 || true
+  if ! "${DOCKER_CMD[@]}" run -d --name "${TUNNEL_CONTAINER_NAME}" --restart unless-stopped \
+    --network host cloudflare/cloudflared:latest \
+    tunnel --no-autoupdate --url http://127.0.0.1:80 >/dev/null; then
+    warn "Failed to start Cloudflare tunnel container"
+    return 0
+  fi
+
+  local i
+  local detected
+  for i in $(seq 1 40); do
+    detected="$("${DOCKER_CMD[@]}" logs "${TUNNEL_CONTAINER_NAME}" 2>&1 \
+      | grep -Eo 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' \
+      | tail -n 1 || true)"
+    if [[ -n "${detected}" ]]; then
+      TUNNEL_URL="${detected}"
+      set_env_var "CORS_ORIGIN" "${TUNNEL_URL}" "${INSTALL_DIR}/.env.vps"
+      return 0
+    fi
+    sleep 1
+  done
+
+  warn "Cloudflare tunnel started but URL was not detected yet. Check logs:"
+  warn "  ${DOCKER_CMD[*]} logs ${TUNNEL_CONTAINER_NAME} --tail=50"
+  return 0
 }
 
 print_summary() {
@@ -425,11 +462,19 @@ print_summary() {
   printf 'Korbit deployed successfully.\n'
   printf 'Web URL: %s://%s\n' "${scheme}" "${HOST}"
   printf 'API URL: %s://%s/api\n' "${scheme}" "${HOST}"
+  if [[ -n "${TUNNEL_URL}" ]]; then
+    printf 'HTTPS Tunnel URL: %s\n' "${TUNNEL_URL}"
+    printf 'HTTPS Tunnel API: %s/api\n' "${TUNNEL_URL}"
+  fi
   printf 'Admin username: %s\n' "${admin_user}"
   printf 'Admin password: %s\n' "${admin_pass}"
   printf '\n'
   printf 'Compose status command:\n'
   printf '  %s compose --env-file %s -f %s ps\n' "${DOCKER_CMD[*]}" "${INSTALL_DIR}/.env.vps" "${INSTALL_DIR}/docker-compose.vps.yml"
+  if [[ -n "${TUNNEL_URL}" ]]; then
+    printf 'Tunnel logs command:\n'
+    printf '  %s logs %s --tail=100\n' "${DOCKER_CMD[*]}" "${TUNNEL_CONTAINER_NAME}"
+  fi
   printf '\n'
 }
 

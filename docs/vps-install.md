@@ -40,6 +40,7 @@ Optional variables:
 - `KORBIT_ADMIN_PASSWORD` (if omitted, auto-generated)
 - `KORBIT_IP_SSL_DOMAIN` (default `traefik.me`, preferred zone when SSL is enabled and host is IP)
 - `KORBIT_IP_SSL_DOMAIN_FALLBACKS` (default `traefik.me,nip.io,sslip.io`)
+- `KORBIT_ENABLE_TUNNEL_ON_HTTP_FALLBACK` (default `true`)
 
 If you only have an IP and no domain:
 
@@ -50,6 +51,8 @@ env KORBIT_ENABLE_SSL=true bash
 
 In this mode the script automatically uses `<PUBLIC_IP>.traefik.me` for Let's Encrypt.
 If one zone is rate-limited, script retries other zones from `KORBIT_IP_SSL_DOMAIN_FALLBACKS`.
+If all zones are rate-limited, script falls back to HTTP on IP and auto-starts Cloudflare
+Quick Tunnel, then prints `HTTPS Tunnel URL`.
 
 ## Check service state
 
