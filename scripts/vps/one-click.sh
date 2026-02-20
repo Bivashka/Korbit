@@ -163,13 +163,41 @@ generate_password() {
   echo "${lower}${upper}${digits}${rest}"
 }
 
+ensure_env_template() {
+  local env_template="$1"
+  if [[ -f "${env_template}" ]]; then
+    return 0
+  fi
+
+  warn "Template ${env_template} is missing. Creating fallback template."
+  cat > "${env_template}" <<'EOF'
+POSTGRES_DB=korbit
+POSTGRES_USER=korbit
+POSTGRES_PASSWORD=CHANGE_ME_DB_PASSWORD
+
+JWT_ACCESS_SECRET=CHANGE_ME_ACCESS_SECRET
+JWT_REFRESH_SECRET=CHANGE_ME_REFRESH_SECRET
+JWT_ACCESS_TTL=900
+JWT_REFRESH_TTL=2592000
+
+REGISTRATION_MODE=invite
+ADMIN_BOOTSTRAP_ENABLED=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASSWORD
+
+CORS_ORIGIN=http://127.0.0.1
+NEXT_PUBLIC_API_URL=http://127.0.0.1/api
+NEXT_PUBLIC_REGISTRATION_MODE=invite
+EOF
+}
+
 configure_env_file() {
   local env_file="${INSTALL_DIR}/.env.vps"
   local env_template="${INSTALL_DIR}/.env.vps.example"
   local scheme
   local current
 
-  [[ -f "${env_template}" ]] || die "Missing template: ${env_template}"
+  ensure_env_template "${env_template}"
 
   if [[ ! -f "${env_file}" ]]; then
     cp "${env_template}" "${env_file}"
