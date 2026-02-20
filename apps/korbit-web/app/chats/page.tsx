@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -62,7 +62,7 @@ type IncomingCall = {
 };
 
 type RecordingMode = 'audio' | 'video';
-const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
+const QUICK_REACTIONS = ['рџ‘Ќ', 'вќ¤пёЏ', 'рџ‚', 'рџ”Ґ', 'рџ®'];
 
 export default function ChatsPage() {
   const router = useRouter();
@@ -161,7 +161,7 @@ export default function ChatsPage() {
 
   function toFriendlyMediaError(error: unknown) {
     if (typeof window !== 'undefined' && !window.isSecureContext) {
-      return 'Звонки доступны только по HTTPS. Открой сайт по защищённому адресу.';
+      return 'Р—РІРѕРЅРєРё РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РїРѕ HTTPS. РћС‚РєСЂРѕР№ СЃР°Р№С‚ РїРѕ Р·Р°С‰РёС‰С‘РЅРЅРѕРјСѓ Р°РґСЂРµСЃСѓ.';
     }
 
     if (
@@ -169,7 +169,7 @@ export default function ChatsPage() {
       !navigator.mediaDevices ||
       typeof navigator.mediaDevices.getUserMedia !== 'function'
     ) {
-      return 'Браузер не поддерживает доступ к микрофону/камере.';
+      return 'Р‘СЂР°СѓР·РµСЂ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РґРѕСЃС‚СѓРї Рє РјРёРєСЂРѕС„РѕРЅСѓ/РєР°РјРµСЂРµ.';
     }
 
     const errorName =
@@ -178,16 +178,16 @@ export default function ChatsPage() {
         : '';
 
     if (errorName === 'NotAllowedError') {
-      return 'Доступ к микрофону/камере запрещён. Разреши доступ в браузере.';
+      return 'Р”РѕСЃС‚СѓРї Рє РјРёРєСЂРѕС„РѕРЅСѓ/РєР°РјРµСЂРµ Р·Р°РїСЂРµС‰С‘РЅ. Р Р°Р·СЂРµС€Рё РґРѕСЃС‚СѓРї РІ Р±СЂР°СѓР·РµСЂРµ.';
     }
     if (errorName === 'NotFoundError') {
-      return 'Микрофон или камера не найдены на устройстве.';
+      return 'РњРёРєСЂРѕС„РѕРЅ РёР»Рё РєР°РјРµСЂР° РЅРµ РЅР°Р№РґРµРЅС‹ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ.';
     }
     if (errorName === 'NotReadableError') {
-      return 'Устройство занято другим приложением.';
+      return 'РЈСЃС‚СЂРѕР№СЃС‚РІРѕ Р·Р°РЅСЏС‚Рѕ РґСЂСѓРіРёРј РїСЂРёР»РѕР¶РµРЅРёРµРј.';
     }
 
-    return 'Не удалось получить доступ к микрофону/камере.';
+    return 'РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕР»СѓС‡РёС‚СЊ РґРѕСЃС‚СѓРї Рє РјРёРєСЂРѕС„РѕРЅСѓ/РєР°РјРµСЂРµ.';
   }
 
   function clearCallTone() {
@@ -260,7 +260,7 @@ export default function ChatsPage() {
   async function requestLocalMedia(type: CallType) {
     if (!canUseMediaDevices()) {
       throw new Error(
-        'Звонки доступны только по HTTPS и при разрешённом доступе к устройствам.',
+        'Р—РІРѕРЅРєРё РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РїРѕ HTTPS Рё РїСЂРё СЂР°Р·СЂРµС€С‘РЅРЅРѕРј РґРѕСЃС‚СѓРїРµ Рє СѓСЃС‚СЂРѕР№СЃС‚РІР°Рј.',
       );
     }
 
@@ -298,7 +298,7 @@ export default function ChatsPage() {
           router.replace('/login');
           return;
         }
-        setError(rawError instanceof Error ? rawError.message : 'Ошибка загрузки');
+        setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё');
       } finally {
         setLoading(false);
       }
@@ -322,7 +322,7 @@ export default function ChatsPage() {
           void markRead(activeChatId, latest.id).catch(() => undefined);
         }
       } catch (rawError) {
-        setError(rawError instanceof Error ? rawError.message : 'Ошибка загрузки сообщений');
+        setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё СЃРѕРѕР±С‰РµРЅРёР№');
       }
     };
 
@@ -443,7 +443,7 @@ export default function ChatsPage() {
       try {
         await connection.addIceCandidate(new RTCIceCandidate(candidate));
       } catch {
-        setCallInfo('Ошибка ICE-кандидата');
+        setCallInfo('РћС€РёР±РєР° ICE-РєР°РЅРґРёРґР°С‚Р°');
       }
     }
   }
@@ -486,14 +486,14 @@ export default function ChatsPage() {
 
     connection.onconnectionstatechange = () => {
       if (connection.connectionState === 'failed') {
-        setCallInfo('Сбой соединения звонка');
+        setCallInfo('РЎР±РѕР№ СЃРѕРµРґРёРЅРµРЅРёСЏ Р·РІРѕРЅРєР°');
       }
       if (connection.connectionState === 'disconnected') {
-        setCallInfo('Собеседник отключился');
+        setCallInfo('РЎРѕР±РµСЃРµРґРЅРёРє РѕС‚РєР»СЋС‡РёР»СЃСЏ');
         cleanupCallState();
       }
       if (connection.connectionState === 'connected') {
-        setCallInfo('Звонок установлен');
+        setCallInfo('Р—РІРѕРЅРѕРє СѓСЃС‚Р°РЅРѕРІР»РµРЅ');
       }
     };
 
@@ -502,7 +502,7 @@ export default function ChatsPage() {
         connection.iceConnectionState === 'failed' ||
         connection.iceConnectionState === 'disconnected'
       ) {
-        setCallInfo('Проблема с сетевым соединением звонка');
+        setCallInfo('РџСЂРѕР±Р»РµРјР° СЃ СЃРµС‚РµРІС‹Рј СЃРѕРµРґРёРЅРµРЅРёРµРј Р·РІРѕРЅРєР°');
       }
     };
 
@@ -594,7 +594,7 @@ export default function ChatsPage() {
         } else if (!isOwnMessage) {
           playTone('message');
           const peerName =
-            message.sender.displayName || message.sender.username || 'Новое сообщение';
+            message.sender.displayName || message.sender.username || 'РќРѕРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ';
           showBrowserNotification(peerName, messageSnippet(message.content));
         }
       },
@@ -656,11 +656,11 @@ export default function ChatsPage() {
       setIncomingCall(event);
       incomingCallRef.current = event;
       startCallTone();
-      setCallInfo('Входящий звонок');
+      setCallInfo('Р’С…РѕРґСЏС‰РёР№ Р·РІРѕРЅРѕРє');
 
       const chat = chats.find((item) => item.id === event.chatId);
-      const caller = chat?.peer?.displayName || chat?.peer?.username || 'Собеседник';
-      const callLabel = event.type === 'video' ? 'Видеозвонок' : 'Аудиозвонок';
+      const caller = chat?.peer?.displayName || chat?.peer?.username || 'РЎРѕР±РµСЃРµРґРЅРёРє';
+      const callLabel = event.type === 'video' ? 'Р’РёРґРµРѕР·РІРѕРЅРѕРє' : 'РђСѓРґРёРѕР·РІРѕРЅРѕРє';
       showBrowserNotification(caller, callLabel);
     });
 
@@ -678,9 +678,9 @@ export default function ChatsPage() {
         await flushPendingIceCandidates();
         clearCallTone();
         setInCall(true);
-        setCallInfo('Звонок установлен');
+        setCallInfo('Р—РІРѕРЅРѕРє СѓСЃС‚Р°РЅРѕРІР»РµРЅ');
       } catch {
-        setCallInfo('Не удалось завершить соединение звонка');
+        setCallInfo('РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЃРѕРµРґРёРЅРµРЅРёРµ Р·РІРѕРЅРєР°');
       }
     });
 
@@ -704,14 +704,14 @@ export default function ChatsPage() {
           new RTCIceCandidate(event.candidate),
         );
       } catch {
-        setCallInfo('Ошибка ICE-кандидата');
+        setCallInfo('РћС€РёР±РєР° ICE-РєР°РЅРґРёРґР°С‚Р°');
       }
     });
 
     socket.on('call_end', (event: { chatId: string; senderId: string }) => {
       if (event.chatId === currentCallChatIdRef.current) {
         clearCallTone();
-        setCallInfo('Звонок завершён');
+        setCallInfo('Р—РІРѕРЅРѕРє Р·Р°РІРµСЂС€С‘РЅ');
         cleanupCallState();
       }
       if (event.chatId === incomingCallRef.current?.chatId) {
@@ -723,7 +723,7 @@ export default function ChatsPage() {
     });
 
     socket.on('connect_error', () => {
-      setError('Ошибка соединения realtime');
+      setError('РћС€РёР±РєР° СЃРѕРµРґРёРЅРµРЅРёСЏ realtime');
     });
 
     return () => {
@@ -769,7 +769,7 @@ export default function ChatsPage() {
       setActiveChatId(chat.id);
       setNewChatUsername('');
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка создания чата');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ С‡Р°С‚Р°');
     } finally {
       setCreatingChat(false);
     }
@@ -924,10 +924,10 @@ export default function ChatsPage() {
 
       setSearchResults(merged);
       if (merged.length === 0) {
-        showNotice('Ничего не найдено');
+        showNotice('РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ');
       }
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка поиска');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° РїРѕРёСЃРєР°');
     } finally {
       setSearching(false);
     }
@@ -968,7 +968,7 @@ export default function ChatsPage() {
       setReplyToMessage(null);
       socketRef.current?.emit('typing', { chatId: activeChatId, isTyping: false });
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка отправки');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё');
     } finally {
       setSending(false);
     }
@@ -988,7 +988,7 @@ export default function ChatsPage() {
         fileInputRef.current.value = '';
       }
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка загрузки файла');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё С„Р°Р№Р»Р°');
     } finally {
       setUploading(false);
     }
@@ -1064,7 +1064,7 @@ export default function ChatsPage() {
         setReplyToMessage(null);
       }
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка удаления сообщения');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ СЃРѕРѕР±С‰РµРЅРёСЏ');
     }
   }
 
@@ -1086,13 +1086,13 @@ export default function ChatsPage() {
       } else {
         const targetChat = chats.find((chat) => chat.id === forwardTargetChatId);
         showNotice(
-          `Переслано в "${targetChat ? chatTitle(targetChat) : 'другой чат'}"`,
+          `РџРµСЂРµСЃР»Р°РЅРѕ РІ "${targetChat ? chatTitle(targetChat) : 'РґСЂСѓРіРѕР№ С‡Р°С‚'}"`,
         );
       }
       setForwardSourceMessage(null);
       setForwardTargetChatId(activeChatIdRef.current ?? null);
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка пересылки сообщения');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° РїРµСЂРµСЃС‹Р»РєРё СЃРѕРѕР±С‰РµРЅРёСЏ');
     }
   }
 
@@ -1107,7 +1107,7 @@ export default function ChatsPage() {
       const updated = await toggleReaction(activeChatId, message.id, emoji);
       applyUpdatedMessage(updated);
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка реакции');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° СЂРµР°РєС†РёРё');
     }
   }
 
@@ -1122,7 +1122,7 @@ export default function ChatsPage() {
       const result = await pinMessage(activeChatId, message.id);
       applyPinnedMessage(activeChatId, result.pinnedMessage);
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка закрепления');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° Р·Р°РєСЂРµРїР»РµРЅРёСЏ');
     }
   }
 
@@ -1137,7 +1137,7 @@ export default function ChatsPage() {
       await unpinMessage(activeChatId);
       applyPinnedMessage(activeChatId, null);
     } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка открепления');
+      setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° РѕС‚РєСЂРµРїР»РµРЅРёСЏ');
     }
   }
 
@@ -1161,7 +1161,7 @@ export default function ChatsPage() {
     }
 
     if (!canUseMediaDevices()) {
-      setError('Запись голосовых и видеосообщений доступна только по HTTPS.');
+      setError('Р—Р°РїРёСЃСЊ РіРѕР»РѕСЃРѕРІС‹С… Рё РІРёРґРµРѕСЃРѕРѕР±С‰РµРЅРёР№ РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РїРѕ HTTPS.');
       return;
     }
 
@@ -1194,7 +1194,7 @@ export default function ChatsPage() {
       };
 
       recorder.onerror = () => {
-        setError('Ошибка записи сообщения');
+        setError('РћС€РёР±РєР° Р·Р°РїРёСЃРё СЃРѕРѕР±С‰РµРЅРёСЏ');
       };
 
       recorder.onstop = async () => {
@@ -1228,7 +1228,7 @@ export default function ChatsPage() {
           const created = await uploadAttachment(chatId, file);
           upsertLocalMessage(created);
         } catch (rawError) {
-          setError(rawError instanceof Error ? rawError.message : 'Ошибка отправки записи');
+          setError(rawError instanceof Error ? rawError.message : 'РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё Р·Р°РїРёСЃРё');
         } finally {
           setUploading(false);
         }
@@ -1248,7 +1248,7 @@ export default function ChatsPage() {
       return;
     }
 
-    setCallInfo(type === 'video' ? 'Запуск видеозвонка...' : 'Запуск аудиозвонка...');
+    setCallInfo(type === 'video' ? 'Р—Р°РїСѓСЃРє РІРёРґРµРѕР·РІРѕРЅРєР°...' : 'Р—Р°РїСѓСЃРє Р°СѓРґРёРѕР·РІРѕРЅРєР°...');
     try {
       currentCallChatIdRef.current = activeChatId;
       pendingIceCandidatesRef.current = [];
@@ -1275,7 +1275,7 @@ export default function ChatsPage() {
 
       setCallType(type);
       setInCall(true);
-      setCallInfo('Ожидание ответа...');
+      setCallInfo('РћР¶РёРґР°РЅРёРµ РѕС‚РІРµС‚Р°...');
     } catch (error) {
       cleanupCallState();
       setCallInfo(toFriendlyMediaError(error));
@@ -1319,10 +1319,10 @@ export default function ChatsPage() {
       clearCallTone();
       setIncomingCall(null);
       incomingCallRef.current = null;
-      setCallInfo('Звонок установлен');
+      setCallInfo('Р—РІРѕРЅРѕРє СѓСЃС‚Р°РЅРѕРІР»РµРЅ');
     } catch (error) {
       cleanupCallState();
-      setCallInfo('Не удалось принять звонок');
+      setCallInfo('РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРЅСЏС‚СЊ Р·РІРѕРЅРѕРє');
       setError(toFriendlyMediaError(error));
     }
   }
@@ -1336,7 +1336,7 @@ export default function ChatsPage() {
     setIncomingCall(null);
     incomingCallRef.current = null;
     pendingIceCandidatesRef.current = [];
-    setCallInfo('Вызов отклонён');
+    setCallInfo('Р’С‹Р·РѕРІ РѕС‚РєР»РѕРЅС‘РЅ');
   }
 
   function onEndCall() {
@@ -1345,7 +1345,7 @@ export default function ChatsPage() {
       return;
     }
     socketRef.current.emit('call_end', { chatId: currentCallChatIdRef.current });
-    setCallInfo('Звонок завершён');
+    setCallInfo('Р—РІРѕРЅРѕРє Р·Р°РІРµСЂС€С‘РЅ');
     cleanupCallState();
   }
 
@@ -1465,7 +1465,7 @@ export default function ChatsPage() {
       !navigator.mediaDevices ||
       typeof navigator.mediaDevices.getDisplayMedia !== 'function'
     ) {
-      setError('Браузер не поддерживает демонстрацию экрана');
+      setError('Р‘СЂР°СѓР·РµСЂ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РґРµРјРѕРЅСЃС‚СЂР°С†РёСЋ СЌРєСЂР°РЅР°');
       return;
     }
 
@@ -1540,7 +1540,51 @@ export default function ChatsPage() {
   }
 
   function chatTitle(chat: ChatItem) {
-    return chat.peer?.displayName || chat.peer?.username || 'Личный чат';
+    return chat.peer?.displayName || chat.peer?.username || 'Р›РёС‡РЅС‹Р№ С‡Р°С‚';
+  }
+
+  function avatarLetter(value: string) {
+    const first = value.trim().charAt(0);
+    return first ? first.toUpperCase() : 'K';
+  }
+
+  function avatarStyle(seed: string) {
+    let hash = 0;
+    for (let index = 0; index < seed.length; index += 1) {
+      hash = (hash * 31 + seed.charCodeAt(index)) % 360;
+    }
+    return {
+      backgroundColor: `hsl(${hash}deg 68% 86%)`,
+      color: `hsl(${hash}deg 46% 34%)`,
+    };
+  }
+
+  function isOnline(userId?: string | null) {
+    if (!userId) {
+      return false;
+    }
+    return presence[userId] === 'online';
+  }
+
+  function formatShortTime(value: string | Date) {
+    const date = value instanceof Date ? value : new Date(value);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatChatItemTime(chat: ChatItem) {
+    if (!chat.lastMessage) {
+      return '';
+    }
+    const date = new Date(chat.lastMessage.createdAt);
+    const now = new Date();
+    const isToday =
+      now.getFullYear() === date.getFullYear() &&
+      now.getMonth() === date.getMonth() &&
+      now.getDate() === date.getDate();
+    if (isToday) {
+      return formatShortTime(date);
+    }
+    return date.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
   }
 
   function userTypingLabel() {
@@ -1558,36 +1602,36 @@ export default function ChatsPage() {
       })
       .join(', ');
 
-    return `${usernames} печатает...`;
+    return `${usernames} РїРµС‡Р°С‚Р°РµС‚...`;
   }
 
   function formatStatus(userId?: string | null) {
     if (!userId) {
-      return 'не в сети';
+      return 'РЅРµ РІ СЃРµС‚Рё';
     }
-    return presence[userId] === 'online' ? 'в сети' : 'не в сети';
+    return presence[userId] === 'online' ? 'РІ СЃРµС‚Рё' : 'РЅРµ РІ СЃРµС‚Рё';
   }
 
   function roleLabel(role: 'USER' | 'ADMIN') {
-    return role === 'ADMIN' ? 'админ' : 'пользователь';
+    return role === 'ADMIN' ? 'Р°РґРјРёРЅ' : 'РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ';
   }
 
   function formatSize(size: number) {
     if (size < 1024) {
-      return `${size} Б`;
+      return `${size} Р‘`;
     }
     if (size < 1024 * 1024) {
-      return `${(size / 1024).toFixed(1)} КБ`;
+      return `${(size / 1024).toFixed(1)} РљР‘`;
     }
-    return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+    return `${(size / (1024 * 1024)).toFixed(1)} РњР‘`;
   }
 
   function messageAuthorLabel(message: MessageItem | MessageItem['replyToMessage']) {
     if (!message) {
-      return 'Пользователь';
+      return 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ';
     }
     if (message.senderId === me?.id) {
-      return 'Вы';
+      return 'Р’С‹';
     }
     return message.sender.displayName || message.sender.username;
   }
@@ -1595,7 +1639,7 @@ export default function ChatsPage() {
   function messageSnippet(content: string) {
     const normalized = content.trim();
     if (!normalized) {
-      return '[пусто]';
+      return '[РїСѓСЃС‚Рѕ]';
     }
     if (normalized.length <= 120) {
       return normalized;
@@ -1605,17 +1649,17 @@ export default function ChatsPage() {
 
   function attachmentLabel(attachment: AttachmentItem) {
     if (attachment.mimeType.startsWith('image/')) {
-      return 'Фото';
+      return 'Р¤РѕС‚Рѕ';
     }
     if (attachment.mimeType.startsWith('audio/')) {
       return attachment.fileName.startsWith('voice-message-')
-        ? 'Голосовое'
-        : 'Аудио';
+        ? 'Р“РѕР»РѕСЃРѕРІРѕРµ'
+        : 'РђСѓРґРёРѕ';
     }
     if (attachment.mimeType.startsWith('video/')) {
-      return attachment.fileName.startsWith('video-note-') ? 'Кружок' : 'Видео';
+      return attachment.fileName.startsWith('video-note-') ? 'РљСЂСѓР¶РѕРє' : 'Р’РёРґРµРѕ';
     }
-    return `Файл: ${attachment.fileName}`;
+    return `Р¤Р°Р№Р»: ${attachment.fileName}`;
   }
 
   function hasAutoAttachmentCaption(
@@ -1629,8 +1673,8 @@ export default function ChatsPage() {
       return true;
     }
     return (
-      normalized === 'Изображение' ||
-      normalized.startsWith('Файл: ') ||
+      normalized === 'РР·РѕР±СЂР°Р¶РµРЅРёРµ' ||
+      normalized.startsWith('Р¤Р°Р№Р»: ') ||
       normalized === 'Audio message' ||
       normalized === 'Video note'
     );
@@ -1639,7 +1683,7 @@ export default function ChatsPage() {
   function chatPreview(chat: ChatItem) {
     const lastMessage = chat.lastMessage;
     if (!lastMessage) {
-      return 'Сообщений пока нет';
+      return 'РЎРѕРѕР±С‰РµРЅРёР№ РїРѕРєР° РЅРµС‚';
     }
     const firstAttachment = lastMessage.attachments?.[0];
     if (firstAttachment) {
@@ -1731,23 +1775,26 @@ export default function ChatsPage() {
   }
 
   if (loading) {
-    return <main className="centered">Загрузка чатов...</main>;
+    return <main className="centered">Р—Р°РіСЂСѓР·РєР° С‡Р°С‚РѕРІ...</main>;
   }
 
   return (
     <main className="chat-shell">
       <aside className="chat-sidebar">
         <header className="sidebar-header">
-          <div>
-            <h2>Korbit</h2>
-            {me ? (
-              <p className="muted">
-                {me.displayName || me.username} ({roleLabel(me.role)})
-              </p>
-            ) : null}
+          <div className="sidebar-brand">
+            <div className="brand-logo">K</div>
+            <div className="brand-meta">
+              <h2>Korbit</h2>
+              {me ? (
+                <p className="muted">
+                  {me.displayName || me.username} ({roleLabel(me.role)})
+                </p>
+              ) : null}
+            </div>
           </div>
-          <button onClick={onLogout} type="button">
-            Выйти
+          <button onClick={onLogout} type="button" className="sidebar-logout">
+            Р’С‹Р№С‚Рё
           </button>
         </header>
 
@@ -1755,10 +1802,10 @@ export default function ChatsPage() {
           <input
             value={newChatUsername}
             onChange={(event) => setNewChatUsername(event.target.value)}
-            placeholder="Начать чат по логину"
+            placeholder="РќР°С‡Р°С‚СЊ С‡Р°С‚ РїРѕ Р»РѕРіРёРЅСѓ"
           />
           <button type="submit" disabled={creatingChat}>
-            {creatingChat ? '...' : 'Старт'}
+            {creatingChat ? '...' : 'РЎС‚Р°СЂС‚'}
           </button>
         </form>
 
@@ -1770,20 +1817,33 @@ export default function ChatsPage() {
               onClick={() => setActiveChatId(chat.id)}
               type="button"
             >
-              <div className="chat-item-row">
-                <strong>{chatTitle(chat)}</strong>
-                {chat.unreadCount > 0 ? (
-                  <span className="unread-badge">{chat.unreadCount}</span>
-                ) : null}
+              <div
+                className="chat-avatar"
+                style={avatarStyle(chat.peer?.username || chat.id)}
+              >
+                <span>{avatarLetter(chatTitle(chat))}</span>
+                <i
+                  className={`chat-avatar-status ${
+                    isOnline(chat.peer?.id) ? 'online' : 'offline'
+                  }`}
+                />
               </div>
-              <span className="muted">{formatStatus(chat.peer?.id)}</span>
-              <span className="preview">
-                {chatPreview(chat)}
-              </span>
+              <div className="chat-item-main">
+                <div className="chat-item-row">
+                  <strong>{chatTitle(chat)}</strong>
+                  <span className="chat-item-time">{formatChatItemTime(chat)}</span>
+                </div>
+                <div className="chat-item-row chat-item-bottom">
+                  <span className="preview">{chatPreview(chat)}</span>
+                  {chat.unreadCount > 0 ? (
+                    <span className="unread-badge">{chat.unreadCount}</span>
+                  ) : null}
+                </div>
+              </div>
             </button>
           ))}
           {chats.length === 0 ? (
-            <p className="muted">Чатов пока нет. Создай первый чат выше.</p>
+            <p className="muted">Р§Р°С‚РѕРІ РїРѕРєР° РЅРµС‚. РЎРѕР·РґР°Р№ РїРµСЂРІС‹Р№ С‡Р°С‚ РІС‹С€Рµ.</p>
           ) : null}
         </div>
       </aside>
@@ -1792,32 +1852,48 @@ export default function ChatsPage() {
         {activeChat ? (
           <>
             <header className="chat-main-header">
-              <h3>{chatTitle(activeChat)}</h3>
+              <div className="chat-peer-head">
+                <div
+                  className="chat-peer-avatar"
+                  style={avatarStyle(activeChat.peer?.username || activeChat.id)}
+                >
+                  {avatarLetter(chatTitle(activeChat))}
+                </div>
+                <div className="chat-peer-meta">
+                  <h3>{chatTitle(activeChat)}</h3>
+                  <span
+                    className={`peer-status ${
+                      isOnline(activeChat.peer?.id) ? 'online' : 'offline'
+                    }`}
+                  >
+                    {formatStatus(activeChat.peer?.id)}
+                  </span>
+                </div>
+              </div>
               <form className="chat-search" onSubmit={onSearchInChat}>
                 <input
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Поиск по сообщениям"
+                  placeholder="РџРѕРёСЃРє РїРѕ СЃРѕРѕР±С‰РµРЅРёСЏРј"
                 />
                 <button type="submit" disabled={searching}>
-                  {searching ? '...' : 'Найти'}
+                  {searching ? '...' : 'РќР°Р№С‚Рё'}
                 </button>
               </form>
               <div className="call-actions">
-                <span className="muted">{formatStatus(activeChat.peer?.id)}</span>
                 <button
                   type="button"
                   onClick={() => onStartCall('audio')}
                   disabled={inCall || !canUseMediaDevices()}
                 >
-                  Аудио
+                  РђСѓРґРёРѕ
                 </button>
                 <button
                   type="button"
                   onClick={() => onStartCall('video')}
                   disabled={inCall || !canUseMediaDevices()}
                 >
-                  Видео
+                  Р’РёРґРµРѕ
                 </button>
               </div>
             </header>
@@ -1826,11 +1902,11 @@ export default function ChatsPage() {
               <section className="pinned-banner">
                 <div>
                   <strong>
-                    Закреп: {messageAuthorLabel(activeChat.pinnedMessage)}
+                    Р—Р°РєСЂРµРї: {messageAuthorLabel(activeChat.pinnedMessage)}
                   </strong>
                   <p>
                     {activeChat.pinnedMessage.isDeleted
-                      ? 'Сообщение удалено'
+                      ? 'РЎРѕРѕР±С‰РµРЅРёРµ СѓРґР°Р»РµРЅРѕ'
                       : messageSnippet(activeChat.pinnedMessage.content)}
                   </p>
                 </div>
@@ -1839,7 +1915,7 @@ export default function ChatsPage() {
                   className="link-button"
                   onClick={() => void onUnpinMessage()}
                 >
-                  Открепить
+                  РћС‚РєСЂРµРїРёС‚СЊ
                 </button>
               </section>
             ) : null}
@@ -1847,7 +1923,7 @@ export default function ChatsPage() {
             {searchExecuted ? (
               <section className="search-results">
                 <div className="search-results-header">
-                  <strong>Результаты поиска</strong>
+                  <strong>Р РµР·СѓР»СЊС‚Р°С‚С‹ РїРѕРёСЃРєР°</strong>
                   <button
                     type="button"
                     className="link-button"
@@ -1857,11 +1933,11 @@ export default function ChatsPage() {
                       setSearchExecuted(false);
                     }}
                   >
-                    Скрыть
+                    РЎРєСЂС‹С‚СЊ
                   </button>
                 </div>
                 {searchResults.length === 0 ? (
-                  <p className="muted">Совпадений пока нет</p>
+                  <p className="muted">РЎРѕРІРїР°РґРµРЅРёР№ РїРѕРєР° РЅРµС‚</p>
                 ) : (
                   <div className="search-results-list">
                     {searchResults.map((result) => (
@@ -1883,7 +1959,7 @@ export default function ChatsPage() {
 
             {!canUseMediaDevices() ? (
               <p className="muted">
-                Звонки доступны только по HTTPS. Сейчас открыт небезопасный режим.
+                Р—РІРѕРЅРєРё РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РїРѕ HTTPS. РЎРµР№С‡Р°СЃ РѕС‚РєСЂС‹С‚ РЅРµР±РµР·РѕРїР°СЃРЅС‹Р№ СЂРµР¶РёРј.
               </p>
             ) : null}
 
@@ -1892,31 +1968,31 @@ export default function ChatsPage() {
                 {incomingCall ? (
                   <div className="call-row">
                     <span>
-                      Входящий {incomingCall.type === 'video' ? 'видеозвонок' : 'аудиозвонок'}
+                      Р’С…РѕРґСЏС‰РёР№ {incomingCall.type === 'video' ? 'РІРёРґРµРѕР·РІРѕРЅРѕРє' : 'Р°СѓРґРёРѕР·РІРѕРЅРѕРє'}
                     </span>
                     <button type="button" onClick={onAcceptIncomingCall}>
-                      Принять
+                      РџСЂРёРЅСЏС‚СЊ
                     </button>
                     <button type="button" onClick={onDeclineIncomingCall}>
-                      Отклонить
+                      РћС‚РєР»РѕРЅРёС‚СЊ
                     </button>
                   </div>
                 ) : null}
 
                 {inCall ? (
                   <div className="call-row">
-                    <span>Звонок активен ({callType === 'video' ? 'видео' : 'аудио'})</span>
+                    <span>Р—РІРѕРЅРѕРє Р°РєС‚РёРІРµРЅ ({callType === 'video' ? 'РІРёРґРµРѕ' : 'Р°СѓРґРёРѕ'})</span>
                     <button type="button" onClick={toggleMute}>
-                      {callMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+                      {callMuted ? 'Р’РєР»СЋС‡РёС‚СЊ РјРёРєСЂРѕС„РѕРЅ' : 'Р’С‹РєР»СЋС‡РёС‚СЊ РјРёРєСЂРѕС„РѕРЅ'}
                     </button>
                     <button type="button" onClick={() => void toggleCamera()}>
-                      {callCameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+                      {callCameraEnabled ? 'Р’С‹РєР»СЋС‡РёС‚СЊ РєР°РјРµСЂСѓ' : 'Р’РєР»СЋС‡РёС‚СЊ РєР°РјРµСЂСѓ'}
                     </button>
                     <button type="button" onClick={() => void onToggleScreenShare()}>
-                      {screenSharing ? 'Остановить демонстрацию' : 'Демонстрация экрана'}
+                      {screenSharing ? 'РћСЃС‚Р°РЅРѕРІРёС‚СЊ РґРµРјРѕРЅСЃС‚СЂР°С†РёСЋ' : 'Р”РµРјРѕРЅСЃС‚СЂР°С†РёСЏ СЌРєСЂР°РЅР°'}
                     </button>
                     <button type="button" onClick={onEndCall}>
-                      Завершить
+                      Р—Р°РІРµСЂС€РёС‚СЊ
                     </button>
                   </div>
                 ) : null}
@@ -1930,7 +2006,7 @@ export default function ChatsPage() {
                       <figcaption className="video-label">
                         {activeChat.peer?.displayName ||
                           activeChat.peer?.username ||
-                          'Собеседник'}
+                          'РЎРѕР±РµСЃРµРґРЅРёРє'}
                       </figcaption>
                     </figure>
                     <figure className="video-tile">
@@ -1942,7 +2018,7 @@ export default function ChatsPage() {
                         className="video-box"
                       />
                       <figcaption className="video-label">
-                        {me?.displayName || me?.username || 'Вы'}
+                        {me?.displayName || me?.username || 'Р’С‹'}
                       </figcaption>
                     </figure>
                   </div>
@@ -1968,11 +2044,11 @@ export default function ChatsPage() {
                     {message.forwardedFromMessage ? (
                       <div className="message-meta-quote">
                         <strong>
-                          Переслано от {messageAuthorLabel(message.forwardedFromMessage)}
+                          РџРµСЂРµСЃР»Р°РЅРѕ РѕС‚ {messageAuthorLabel(message.forwardedFromMessage)}
                         </strong>
                         <span>
                           {message.forwardedFromMessage.isDeleted
-                            ? 'Сообщение удалено'
+                            ? 'РЎРѕРѕР±С‰РµРЅРёРµ СѓРґР°Р»РµРЅРѕ'
                             : messageSnippet(message.forwardedFromMessage.content)}
                         </span>
                       </div>
@@ -1980,15 +2056,18 @@ export default function ChatsPage() {
 
                     {message.replyToMessage ? (
                       <div className="message-meta-quote">
-                        <strong>Ответ для {messageAuthorLabel(message.replyToMessage)}</strong>
+                        <strong>РћС‚РІРµС‚ РґР»СЏ {messageAuthorLabel(message.replyToMessage)}</strong>
                         <span>
                           {message.replyToMessage.isDeleted
-                            ? 'Сообщение удалено'
+                            ? 'РЎРѕРѕР±С‰РµРЅРёРµ СѓРґР°Р»РµРЅРѕ'
                             : messageSnippet(message.replyToMessage.content)}
                         </span>
                       </div>
                     ) : null}
 
+                    {!own ? (
+                      <span className="message-author">{messageAuthorLabel(message)}</span>
+                    ) : null}
                     {!hasAutoAttachmentCaption(message) ? <p>{message.content}</p> : null}
                     {renderAttachments(message.attachments)}
 
@@ -2008,10 +2087,10 @@ export default function ChatsPage() {
                       </div>
                     ) : null}
 
-                    <small>
-                      {messageAuthorLabel(message)}
-                      {message.editedAt ? ' (изменено)' : ''} |{' '}
-                      {new Date(message.createdAt).toLocaleTimeString()}
+                    <small className="message-meta">
+                      {message.editedAt ? 'edited ' : ''}
+                      {formatShortTime(message.createdAt)}
+                      {own ? ' | read' : ''}
                     </small>
                   </article>
                 );
@@ -2045,7 +2124,7 @@ export default function ChatsPage() {
                   onClick={() => onReply(contextMenuMessage)}
                   disabled={contextMenuMessage.isDeleted}
                 >
-                  Ответить
+                  РћС‚РІРµС‚РёС‚СЊ
                 </button>
                 <button
                   type="button"
@@ -2053,7 +2132,7 @@ export default function ChatsPage() {
                   onClick={() => onForwardSelect(contextMenuMessage)}
                   disabled={contextMenuMessage.isDeleted}
                 >
-                  Переслать
+                  РџРµСЂРµСЃР»Р°С‚СЊ
                 </button>
                 <button
                   type="button"
@@ -2061,7 +2140,7 @@ export default function ChatsPage() {
                   onClick={() => void onPinMessage(contextMenuMessage)}
                   disabled={contextMenuMessage.isDeleted}
                 >
-                  Закрепить
+                  Р—Р°РєСЂРµРїРёС‚СЊ
                 </button>
                 {contextMenuCanManage ? (
                   <button
@@ -2070,7 +2149,7 @@ export default function ChatsPage() {
                     onClick={() => onEditMessage(contextMenuMessage)}
                     disabled={contextMenuMessage.isDeleted}
                   >
-                    Изменить
+                    РР·РјРµРЅРёС‚СЊ
                   </button>
                 ) : null}
                 {contextMenuCanManage ? (
@@ -2080,7 +2159,7 @@ export default function ChatsPage() {
                     onClick={() => void onDeleteMessage(contextMenuMessage)}
                     disabled={contextMenuMessage.isDeleted}
                   >
-                    Удалить
+                    РЈРґР°Р»РёС‚СЊ
                   </button>
                 ) : null}
               </div>
@@ -2091,11 +2170,11 @@ export default function ChatsPage() {
             {replyToMessage ? (
               <div className="composer-context">
                 <div>
-                  <strong>Ответ на {messageAuthorLabel(replyToMessage)}</strong>
+                  <strong>РћС‚РІРµС‚ РЅР° {messageAuthorLabel(replyToMessage)}</strong>
                   <p>{messageSnippet(replyToMessage.content)}</p>
                 </div>
                 <button type="button" className="link-button" onClick={() => setReplyToMessage(null)}>
-                  Отменить
+                  РћС‚РјРµРЅРёС‚СЊ
                 </button>
               </div>
             ) : null}
@@ -2103,8 +2182,8 @@ export default function ChatsPage() {
             {editingMessageId ? (
               <div className="composer-context">
                 <div>
-                  <strong>Редактирование сообщения</strong>
-                  <p>После сохранения участники увидят пометку "изменено"</p>
+                  <strong>Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ СЃРѕРѕР±С‰РµРЅРёСЏ</strong>
+                  <p>РџРѕСЃР»Рµ СЃРѕС…СЂР°РЅРµРЅРёСЏ СѓС‡Р°СЃС‚РЅРёРєРё СѓРІРёРґСЏС‚ РїРѕРјРµС‚РєСѓ "РёР·РјРµРЅРµРЅРѕ"</p>
                 </div>
                 <button
                   type="button"
@@ -2114,7 +2193,7 @@ export default function ChatsPage() {
                     setMessageInput('');
                   }}
                 >
-                  Отменить
+                  РћС‚РјРµРЅРёС‚СЊ
                 </button>
               </div>
             ) : null}
@@ -2123,13 +2202,13 @@ export default function ChatsPage() {
               <div className="composer-context">
                 <div>
                   <strong>
-                    Пересылка от {messageAuthorLabel(forwardSourceMessage)}
+                    РџРµСЂРµСЃС‹Р»РєР° РѕС‚ {messageAuthorLabel(forwardSourceMessage)}
                   </strong>
                   <p>{messageSnippet(forwardSourceMessage.content)}</p>
                 </div>
                 <div className="composer-context-actions">
                   <label className="forward-target-field">
-                    <span className="muted">Куда</span>
+                    <span className="muted">РљСѓРґР°</span>
                     <select
                       className="forward-target-select"
                       value={forwardTargetChatId ?? ''}
@@ -2138,7 +2217,7 @@ export default function ChatsPage() {
                       }
                     >
                       <option value="" disabled>
-                        Выберите чат
+                        Р’С‹Р±РµСЂРёС‚Рµ С‡Р°С‚
                       </option>
                       {chats.map((chat) => (
                         <option key={chat.id} value={chat.id}>
@@ -2152,14 +2231,14 @@ export default function ChatsPage() {
                     onClick={() => void onForwardToActiveChat()}
                     disabled={uploading || !forwardTargetChatId}
                   >
-                    {forwardTargetChatId === activeChatId ? 'Переслать сюда' : 'Переслать'}
+                    {forwardTargetChatId === activeChatId ? 'РџРµСЂРµСЃР»Р°С‚СЊ СЃСЋРґР°' : 'РџРµСЂРµСЃР»Р°С‚СЊ'}
                   </button>
                   <button
                     type="button"
                     className="link-button"
                     onClick={() => setForwardSourceMessage(null)}
                   >
-                    Отменить
+                    РћС‚РјРµРЅРёС‚СЊ
                   </button>
                 </div>
               </div>
@@ -2175,32 +2254,35 @@ export default function ChatsPage() {
                 />
                 <button
                   type="button"
+                  className="tool-button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
                 >
-                  Прикрепить файл
+                  РџСЂРёРєСЂРµРїРёС‚СЊ С„Р°Р№Р»
                 </button>
                 <button
                   type="button"
+                  className="tool-button"
                   onClick={() => onStartRecording('audio')}
                   disabled={uploading || Boolean(recordingMode)}
                 >
-                  Голосовое
+                  Р“РѕР»РѕСЃРѕРІРѕРµ
                 </button>
                 <button
                   type="button"
+                  className="tool-button"
                   onClick={() => onStartRecording('video')}
                   disabled={uploading || Boolean(recordingMode)}
                 >
-                  Кружок
+                  РљСЂСѓР¶РѕРє
                 </button>
                 {recordingMode ? (
                   <>
                     <span className="muted">
-                      Идёт запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
+                      РРґС‘С‚ Р·Р°РїРёСЃСЊ {recordingMode === 'audio' ? 'РіРѕР»РѕСЃРѕРІРѕРіРѕ' : 'РєСЂСѓР¶РєР°'}
                     </span>
                     <button type="button" onClick={stopRecording}>
-                      Остановить и отправить
+                      РћСЃС‚Р°РЅРѕРІРёС‚СЊ Рё РѕС‚РїСЂР°РІРёС‚СЊ
                     </button>
                   </>
                 ) : null}
@@ -2208,7 +2290,7 @@ export default function ChatsPage() {
                   <>
                     <span className="muted">{selectedFile.name}</span>
                     <button type="button" onClick={onUploadSelectedFile} disabled={uploading}>
-                      {uploading ? 'Загрузка...' : 'Отправить файл'}
+                      {uploading ? 'Р—Р°РіСЂСѓР·РєР°...' : 'РћС‚РїСЂР°РІРёС‚СЊ С„Р°Р№Р»'}
                     </button>
                   </>
                 ) : null}
@@ -2220,21 +2302,21 @@ export default function ChatsPage() {
                   onChange={(event) => onTyping(event.target.value)}
                   placeholder={
                     editingMessageId
-                      ? 'Измените сообщение...'
-                      : 'Введите сообщение...'
+                      ? 'РР·РјРµРЅРёС‚Рµ СЃРѕРѕР±С‰РµРЅРёРµ...'
+                      : 'Р’РІРµРґРёС‚Рµ СЃРѕРѕР±С‰РµРЅРёРµ...'
                   }
                   disabled={sending}
                 />
                 <button type="submit" disabled={sending || !messageInput.trim()}>
-                  {editingMessageId ? 'Сохранить' : 'Отправить'}
+                  {editingMessageId ? 'РЎРѕС…СЂР°РЅРёС‚СЊ' : 'РћС‚РїСЂР°РІРёС‚СЊ'}
                 </button>
               </form>
             </div>
           </>
         ) : (
           <div className="empty-chat">
-            <h3>Чат не выбран</h3>
-            <p className="muted">Создай личный чат в левой панели.</p>
+            <h3>Р§Р°С‚ РЅРµ РІС‹Р±СЂР°РЅ</h3>
+            <p className="muted">РЎРѕР·РґР°Р№ Р»РёС‡РЅС‹Р№ С‡Р°С‚ РІ Р»РµРІРѕР№ РїР°РЅРµР»Рё.</p>
           </div>
         )}
       </section>
@@ -2246,3 +2328,4 @@ export default function ChatsPage() {
     </main>
   );
 }
+
