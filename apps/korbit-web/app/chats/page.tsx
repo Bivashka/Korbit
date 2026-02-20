@@ -48,19 +48,26 @@ type IncomingCall = {
   type: CallType;
 };
 
+type RecordingMode = 'audio' | 'video';
+
 export default function ChatsPage() {
   const router = useRouter();
   const socketRef = useRef<Socket | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
+  const incomingCallRef = useRef<IncomingCall | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const currentCallChatIdRef = useRef<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaRecorderStreamRef = useRef<MediaStream | null>(null);
+  const recorderChunksRef = useRef<Blob[]>([]);
 
   const [me, setMe] = useState<UserProfile | null>(null);
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -83,6 +90,7 @@ export default function ChatsPage() {
   const [callMuted, setCallMuted] = useState(false);
   const [callCameraEnabled, setCallCameraEnabled] = useState(true);
   const [callInfo, setCallInfo] = useState<string | null>(null);
+  const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
@@ -151,6 +159,10 @@ export default function ChatsPage() {
   }, [activeChatId]);
 
   useEffect(() => {
+    incomingCallRef.current = incomingCall;
+  }, [incomingCall]);
+
+  useEffect(() => {
     if (!isAuthenticated()) {
       router.replace('/login');
       return;
@@ -201,12 +213,24 @@ export default function ChatsPage() {
     void loadMessages();
   }, [activeChatId]);
 
+  useEffect(() => {
+    if (inCall) {
+      setMediaRefs();
+    }
+  }, [inCall, callType]);
+
   function setMediaRefs() {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = localStreamRef.current;
+      if (localStreamRef.current) {
+        void localVideoRef.current.play().catch(() => undefined);
+      }
     }
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      if (remoteStreamRef.current) {
+        void remoteVideoRef.current.play().catch(() => undefined);
+      }
     }
   }
 
@@ -223,7 +247,9 @@ export default function ChatsPage() {
 
     stopLocalStream();
     remoteStreamRef.current = null;
+    pendingIceCandidatesRef.current = [];
     currentCallChatIdRef.current = null;
+    incomingCallRef.current = null;
     setIncomingCall(null);
     setInCall(false);
     setCallType(null);
@@ -232,9 +258,30 @@ export default function ChatsPage() {
     setMediaRefs();
   }
 
+  async function flushPendingIceCandidates() {
+    const connection = peerConnectionRef.current;
+    if (!connection?.remoteDescription) {
+      return;
+    }
+
+    const pending = [...pendingIceCandidatesRef.current];
+    pendingIceCandidatesRef.current = [];
+    for (const candidate of pending) {
+      try {
+        await connection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch {
+        setCallInfo('Ошибка ICE-кандидата');
+      }
+    }
+  }
+
   function createPeerConnection(chatId: string) {
     const connection = new RTCPeerConnection({
-      iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }],
+      iceServers: [
+        {
+          urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'],
+        },
+      ],
     });
 
     connection.onicecandidate = (event) => {
@@ -248,7 +295,19 @@ export default function ChatsPage() {
     };
 
     connection.ontrack = (event) => {
-      remoteStreamRef.current = event.streams[0];
+      if (event.streams[0]) {
+        remoteStreamRef.current = event.streams[0];
+      } else {
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = new MediaStream();
+        }
+        const hasTrack = remoteStreamRef.current
+          .getTracks()
+          .some((track) => track.id === event.track.id);
+        if (!hasTrack) {
+          remoteStreamRef.current.addTrack(event.track);
+        }
+      }
       setMediaRefs();
     };
 
@@ -259,6 +318,18 @@ export default function ChatsPage() {
       if (connection.connectionState === 'disconnected') {
         setCallInfo('Собеседник отключился');
         cleanupCallState();
+      }
+      if (connection.connectionState === 'connected') {
+        setCallInfo('Звонок установлен');
+      }
+    };
+
+    connection.oniceconnectionstatechange = () => {
+      if (
+        connection.iceConnectionState === 'failed' ||
+        connection.iceConnectionState === 'disconnected'
+      ) {
+        setCallInfo('Проблема с сетевым соединением звонка');
       }
     };
 
@@ -375,7 +446,9 @@ export default function ChatsPage() {
       if (event.senderId === me?.id) {
         return;
       }
+      pendingIceCandidatesRef.current = [];
       setIncomingCall(event);
+      incomingCallRef.current = event;
       setCallInfo('Входящий звонок');
     });
 
@@ -386,20 +459,33 @@ export default function ChatsPage() {
       if (event.chatId !== currentCallChatIdRef.current) {
         return;
       }
-      await peerConnectionRef.current.setRemoteDescription(
-        new RTCSessionDescription(event.sdp),
-      );
-      setInCall(true);
-      setCallInfo('Звонок установлен');
+      try {
+        await peerConnectionRef.current.setRemoteDescription(
+          new RTCSessionDescription(event.sdp),
+        );
+        await flushPendingIceCandidates();
+        setInCall(true);
+        setCallInfo('Звонок установлен');
+      } catch {
+        setCallInfo('Не удалось завершить соединение звонка');
+      }
     });
 
     socket.on('call_ice_candidate', async (event: IceCandidateEvent) => {
-      if (event.senderId === me?.id || !peerConnectionRef.current) {
+      if (event.senderId === me?.id) {
         return;
       }
-      if (event.chatId !== currentCallChatIdRef.current) {
+      const expectedChatId =
+        currentCallChatIdRef.current ?? incomingCallRef.current?.chatId ?? null;
+      if (!expectedChatId || event.chatId !== expectedChatId) {
         return;
       }
+
+      if (!peerConnectionRef.current || !peerConnectionRef.current.remoteDescription) {
+        pendingIceCandidatesRef.current.push(event.candidate);
+        return;
+      }
+
       try {
         await peerConnectionRef.current.addIceCandidate(
           new RTCIceCandidate(event.candidate),
@@ -414,6 +500,11 @@ export default function ChatsPage() {
         setCallInfo('Звонок завершён');
         cleanupCallState();
       }
+      if (event.chatId === incomingCallRef.current?.chatId) {
+        setIncomingCall(null);
+        incomingCallRef.current = null;
+        pendingIceCandidatesRef.current = [];
+      }
     });
 
     socket.on('connect_error', () => {
@@ -426,6 +517,13 @@ export default function ChatsPage() {
       cleanupCallState();
     };
   }, [me]);
+
+  useEffect(() => {
+    return () => {
+      stopRecording();
+      stopRecorderStream();
+    };
+  }, []);
 
   async function onCreateChat(event: FormEvent) {
     event.preventDefault();
@@ -520,6 +618,108 @@ export default function ChatsPage() {
     }
   }
 
+  function stopRecorderStream() {
+    for (const track of mediaRecorderStreamRef.current?.getTracks() ?? []) {
+      track.stop();
+    }
+    mediaRecorderStreamRef.current = null;
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
+  }
+
+  async function onStartRecording(mode: RecordingMode) {
+    if (!activeChatIdRef.current || uploading || recordingMode) {
+      return;
+    }
+
+    if (!canUseMediaDevices()) {
+      setError('Запись голосовых и видеосообщений доступна только по HTTPS.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: mode === 'video',
+      });
+
+      const preferredTypes =
+        mode === 'video'
+          ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+          : ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm'];
+      const mimeType =
+        preferredTypes.find((value) => MediaRecorder.isTypeSupported(value)) ?? '';
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      recorderChunksRef.current = [];
+      mediaRecorderStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      setRecordingMode(mode);
+      setError(null);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recorderChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        setError('Ошибка записи сообщения');
+      };
+
+      recorder.onstop = async () => {
+        const chatId = activeChatIdRef.current;
+        const chunks = [...recorderChunksRef.current];
+        recorderChunksRef.current = [];
+
+        stopRecorderStream();
+        mediaRecorderRef.current = null;
+        setRecordingMode(null);
+
+        if (!chatId || chunks.length === 0) {
+          return;
+        }
+
+        const fallbackType = mode === 'video' ? 'video/webm' : 'audio/webm';
+        const blobType = recorder.mimeType || fallbackType;
+        const blob = new Blob(chunks, { type: blobType });
+        if (blob.size === 0) {
+          return;
+        }
+
+        const ext = blobType.includes('ogg') ? 'ogg' : 'webm';
+        const fileNamePrefix = mode === 'video' ? 'video-note' : 'voice-message';
+        const file = new File([blob], `${fileNamePrefix}-${Date.now()}.${ext}`, {
+          type: blobType,
+        });
+
+        setUploading(true);
+        try {
+          const created = await uploadAttachment(chatId, file);
+          upsertLocalMessage(created);
+        } catch (rawError) {
+          setError(rawError instanceof Error ? rawError.message : 'Ошибка отправки записи');
+        } finally {
+          setUploading(false);
+        }
+      };
+
+      recorder.start(300);
+    } catch (rawError) {
+      stopRecorderStream();
+      mediaRecorderRef.current = null;
+      setRecordingMode(null);
+      setError(toFriendlyMediaError(rawError));
+    }
+  }
+
   async function onStartCall(type: CallType) {
     if (!activeChatId || !socketRef.current || inCall) {
       return;
@@ -527,6 +727,8 @@ export default function ChatsPage() {
 
     setCallInfo(type === 'video' ? 'Запуск видеозвонка...' : 'Запуск аудиозвонка...');
     try {
+      currentCallChatIdRef.current = activeChatId;
+      pendingIceCandidatesRef.current = [];
       const media = await requestLocalMedia(type);
       localStreamRef.current = media;
       remoteStreamRef.current = new MediaStream();
@@ -546,7 +748,6 @@ export default function ChatsPage() {
         type,
       });
 
-      currentCallChatIdRef.current = activeChatId;
       setCallType(type);
       setInCall(true);
       setCallInfo('Ожидание ответа...');
@@ -563,6 +764,7 @@ export default function ChatsPage() {
     }
 
     try {
+      currentCallChatIdRef.current = incomingCall.chatId;
       const media = await requestLocalMedia(incomingCall.type);
       localStreamRef.current = media;
       remoteStreamRef.current = new MediaStream();
@@ -576,6 +778,7 @@ export default function ChatsPage() {
       await connection.setRemoteDescription(
         new RTCSessionDescription(incomingCall.sdp),
       );
+      await flushPendingIceCandidates();
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
 
@@ -584,10 +787,10 @@ export default function ChatsPage() {
         sdp: answer,
       });
 
-      currentCallChatIdRef.current = incomingCall.chatId;
       setCallType(incomingCall.type);
       setInCall(true);
       setIncomingCall(null);
+      incomingCallRef.current = null;
       setCallInfo('Звонок установлен');
     } catch (error) {
       cleanupCallState();
@@ -602,6 +805,7 @@ export default function ChatsPage() {
     }
     socketRef.current.emit('call_end', { chatId: incomingCall.chatId });
     setIncomingCall(null);
+    incomingCallRef.current = null;
     setCallInfo('Вызов отклонён');
   }
 
@@ -643,6 +847,8 @@ export default function ChatsPage() {
 
   async function onLogout() {
     onEndCall();
+    stopRecording();
+    stopRecorderStream();
     await logout();
     router.replace('/login');
   }
@@ -715,8 +921,7 @@ export default function ChatsPage() {
     return (
       <div className="attachments">
         {attachments.map((attachment) => {
-          const isImage = attachment.mimeType.startsWith('image/');
-          if (isImage) {
+          if (attachment.mimeType.startsWith('image/')) {
             return (
               <a
                 key={attachment.id}
@@ -734,6 +939,31 @@ export default function ChatsPage() {
               </a>
             );
           }
+
+          if (attachment.mimeType.startsWith('audio/')) {
+            return (
+              <div key={attachment.id} className="attachment-media">
+                <audio controls preload="metadata" src={attachment.url} className="audio-player" />
+                <span className="muted">{attachment.fileName}</span>
+              </div>
+            );
+          }
+
+          if (attachment.mimeType.startsWith('video/')) {
+            const isVideoNote = attachment.fileName.startsWith('video-note-');
+            return (
+              <div key={attachment.id} className="attachment-media">
+                <video
+                  controls
+                  preload="metadata"
+                  src={attachment.url}
+                  className={isVideoNote ? 'video-note-player' : 'video-player'}
+                />
+                <span className="muted">{attachment.fileName}</span>
+              </div>
+            );
+          }
+
           return (
             <a
               key={attachment.id}
@@ -871,14 +1101,26 @@ export default function ChatsPage() {
 
                 {inCall ? (
                   <div className="video-grid">
-                    <video ref={remoteVideoRef} autoPlay playsInline className="video-box" />
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="video-box"
-                    />
+                    <figure className="video-tile">
+                      <video ref={remoteVideoRef} autoPlay playsInline className="video-box" />
+                      <figcaption className="video-label">
+                        {activeChat.peer?.displayName ||
+                          activeChat.peer?.username ||
+                          'Собеседник'}
+                      </figcaption>
+                    </figure>
+                    <figure className="video-tile">
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="video-box"
+                      />
+                      <figcaption className="video-label">
+                        {me?.displayName || me?.username || 'Вы'}
+                      </figcaption>
+                    </figure>
                   </div>
                 ) : null}
               </section>
@@ -919,6 +1161,30 @@ export default function ChatsPage() {
               >
                 Прикрепить файл
               </button>
+              <button
+                type="button"
+                onClick={() => onStartRecording('audio')}
+                disabled={uploading || Boolean(recordingMode)}
+              >
+                Голосовое
+              </button>
+              <button
+                type="button"
+                onClick={() => onStartRecording('video')}
+                disabled={uploading || Boolean(recordingMode)}
+              >
+                Кружок
+              </button>
+              {recordingMode ? (
+                <>
+                  <span className="muted">
+                    Идёт запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
+                  </span>
+                  <button type="button" onClick={stopRecording}>
+                    Остановить и отправить
+                  </button>
+                </>
+              ) : null}
               {selectedFile ? (
                 <>
                   <span className="muted">{selectedFile.name}</span>
