@@ -6,6 +6,7 @@ import { io, Socket } from 'socket.io-client';
 import {
   ApiError,
   createDirectChat,
+  createSharedChat,
   deleteMessage,
   forwardMessage,
   getMe,
@@ -22,6 +23,7 @@ import {
   toggleReaction,
   triggerAdminBuild,
   unpinMessage,
+  updateMe,
   updateMessage,
   uploadAttachment,
 } from '../../lib/api';
@@ -70,6 +72,8 @@ type IncomingCall = {
 
 type RecordingMode = 'audio' | 'video';
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
+const THEME_STORAGE_KEY = 'korbit-theme';
+const ALIASES_STORAGE_KEY = 'korbit-name-aliases';
 
 export default function ChatsPage() {
   const router = useRouter();
@@ -94,6 +98,7 @@ export default function ChatsPage() {
   const chatsRef = useRef<ChatItem[]>([]);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const cameraTrackBeforeShareRef = useRef<MediaStreamTrack | null>(null);
+  const discardRecordingOnStopRef = useRef(false);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -115,6 +120,14 @@ export default function ChatsPage() {
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const [newChatUsername, setNewChatUsername] = useState('');
+  const [newChatType, setNewChatType] = useState<'DIRECT' | 'GROUP' | 'CHANNEL'>(
+    'DIRECT',
+  );
+  const [newChatTitle, setNewChatTitle] = useState('');
+  const [newChatMembers, setNewChatMembers] = useState('');
+  const [newChannelPublic, setNewChannelPublic] = useState(false);
+  const [newChannelUsername, setNewChannelUsername] = useState('');
+  const [chatListSearch, setChatListSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [creatingChat, setCreatingChat] = useState(false);
   const [sending, setSending] = useState(false);
@@ -159,6 +172,20 @@ export default function ChatsPage() {
   const [callInfo, setCallInfo] = useState<string | null>(null);
   const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [pendingRecording, setPendingRecording] = useState<{
+    mode: RecordingMode;
+    blob: Blob;
+    url: string;
+    mimeType: string;
+    fileName: string;
+  } | null>(null);
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'navy'>('light');
+  const [nameAliases, setNameAliases] = useState<Record<string, string>>({});
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileDisplayName, setProfileDisplayName] = useState('');
+  const [profileBio, setProfileBio] = useState('');
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
@@ -211,6 +238,26 @@ export default function ChatsPage() {
   }, [activeChat, me, messages, peerReadCutoffIndex]);
   const showSidebarPanel = !isMobileLayout || !activeChatId;
   const showChatPanel = !isMobileLayout || Boolean(activeChatId);
+  const normalizedChatListSearch = chatListSearch.trim().toLowerCase();
+  const filteredChats = useMemo(() => {
+    if (!normalizedChatListSearch) {
+      return chats;
+    }
+
+    return chats.filter((chat) => {
+      const title =
+        chat.type === 'DIRECT'
+          ? resolveAlias(
+              chat.peer?.id,
+              chat.peer?.displayName || chat.peer?.username || chat.title || '',
+            )
+          : chat.title || chat.username || '';
+      const preview = chat.lastMessage?.content || '';
+      const username = chat.peer?.username || chat.username || '';
+      const haystack = `${title} ${preview} ${username}`.toLowerCase();
+      return haystack.includes(normalizedChatListSearch);
+    });
+  }, [chats, normalizedChatListSearch, nameAliases]);
 
   function canUseMediaDevices() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -419,6 +466,45 @@ export default function ChatsPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === 'dark' || storedTheme === 'light' || storedTheme === 'navy') {
+      setThemeMode(storedTheme);
+    }
+
+    const storedAliases = window.localStorage.getItem(ALIASES_STORAGE_KEY);
+    if (storedAliases) {
+      try {
+        const parsed = JSON.parse(storedAliases) as Record<string, string>;
+        setNameAliases(parsed);
+      } catch {
+        // ignore broken storage
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    document.documentElement.dataset.theme = themeMode;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    }
+  }, [themeMode]);
+
+  useEffect(() => {
+    if (!me) {
+      return;
+    }
+    setProfileDisplayName(me.displayName ?? '');
+    setProfileBio(me.bio ?? '');
+    setProfileAvatarUrl(me.avatarUrl ?? '');
+  }, [me]);
+
+  useEffect(() => {
     if (!isAuthenticated()) {
       router.replace('/login');
       return;
@@ -482,6 +568,7 @@ export default function ChatsPage() {
     setSearchExecuted(false);
     setHighlightedMessageId(null);
     setContextMenu(null);
+    clearPendingRecording();
   }, [activeChatId]);
 
   useEffect(() => {
@@ -907,7 +994,10 @@ export default function ChatsPage() {
           playTone('message');
           if (typeof document === 'undefined' || document.hidden || !isActiveChat) {
             const peerName =
-              message.sender.displayName || message.sender.username || 'Новое сообщение';
+              resolveAlias(
+                message.sender.id,
+                message.sender.displayName || message.sender.username || 'Новое сообщение',
+              );
             showBrowserNotification(peerName, messageSnippet(message.content));
           }
         }
@@ -1085,8 +1175,9 @@ export default function ChatsPage() {
 
   useEffect(() => {
     return () => {
-      stopRecording();
+      stopRecording(false);
       stopRecorderStream();
+      clearPendingRecording();
       clearCallTone();
       if (audioContextRef.current) {
         void audioContextRef.current.close().catch(() => undefined);
@@ -1174,14 +1265,46 @@ export default function ChatsPage() {
   async function onCreateChat(event: FormEvent) {
     event.preventDefault();
     const target = newChatUsername.trim();
-    if (!target) {
+    const title = newChatTitle.trim();
+    const channelUsername = newChannelUsername.trim();
+    const members = Array.from(
+      new Set(
+        newChatMembers
+          .split(/[\s,]+/)
+          .map((item) => item.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+
+    if (newChatType === 'DIRECT' && !target) {
+      setError('Введите логин пользователя');
+      return;
+    }
+    if (newChatType !== 'DIRECT' && !title) {
+      setError('Введите название чата');
+      return;
+    }
+    if (newChatType === 'CHANNEL' && newChannelPublic && !channelUsername) {
+      setError('Введите username публичного канала');
       return;
     }
 
     setCreatingChat(true);
     setError(null);
     try {
-      const chat = await createDirectChat(target);
+      const chat =
+        newChatType === 'DIRECT'
+          ? await createDirectChat(target)
+          : await createSharedChat({
+              type: newChatType,
+              title,
+              isPublic: newChatType === 'CHANNEL' ? newChannelPublic : undefined,
+              username:
+                newChatType === 'CHANNEL' && newChannelPublic
+                  ? channelUsername
+                  : undefined,
+              members,
+            });
       setChats((previous) => {
         const existing = previous.find((item) => item.id === chat.id);
         if (existing) {
@@ -1191,6 +1314,11 @@ export default function ChatsPage() {
       });
       setActiveChatId(chat.id);
       setNewChatUsername('');
+      setNewChatTitle('');
+      setNewChatMembers('');
+      setNewChannelPublic(false);
+      setNewChannelUsername('');
+      setNewChatType('DIRECT');
     } catch (rawError) {
       setError(rawError instanceof Error ? rawError.message : 'Ошибка создания чата');
     } finally {
@@ -1571,17 +1699,52 @@ export default function ChatsPage() {
     mediaRecorderStreamRef.current = null;
   }
 
-  function stopRecording() {
+  function clearPendingRecording() {
+    setPendingRecording((previous) => {
+      if (previous?.url) {
+        URL.revokeObjectURL(previous.url);
+      }
+      return null;
+    });
+  }
+
+  function stopRecording(save = true) {
+    discardRecordingOnStopRef.current = !save;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
     mediaRecorderRef.current = null;
   }
 
+  async function onSendPendingRecording() {
+    const chatId = activeChatIdRef.current;
+    if (!chatId || !pendingRecording) {
+      return;
+    }
+
+    const file = new File([pendingRecording.blob], pendingRecording.fileName, {
+      type: pendingRecording.mimeType,
+    });
+
+    setUploading(true);
+    setError(null);
+    try {
+      const created = await uploadAttachment(chatId, file);
+      upsertLocalMessage(created);
+      clearPendingRecording();
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка отправки записи');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function onStartRecording(mode: RecordingMode) {
     if (!activeChatIdRef.current || uploading || recordingMode) {
       return;
     }
+
+    clearPendingRecording();
 
     if (!canUseMediaDevices()) {
       setError('Запись голосовых и видеосообщений доступна только по HTTPS.');
@@ -1607,6 +1770,7 @@ export default function ChatsPage() {
       recorderChunksRef.current = [];
       mediaRecorderStreamRef.current = stream;
       mediaRecorderRef.current = recorder;
+      discardRecordingOnStopRef.current = false;
       setRecordingMode(mode);
       setError(null);
 
@@ -1621,15 +1785,16 @@ export default function ChatsPage() {
       };
 
       recorder.onstop = async () => {
-        const chatId = activeChatIdRef.current;
         const chunks = [...recorderChunksRef.current];
         recorderChunksRef.current = [];
+        const shouldDiscard = discardRecordingOnStopRef.current;
+        discardRecordingOnStopRef.current = false;
 
         stopRecorderStream();
         mediaRecorderRef.current = null;
         setRecordingMode(null);
 
-        if (!chatId || chunks.length === 0) {
+        if (shouldDiscard || chunks.length === 0) {
           return;
         }
 
@@ -1642,21 +1807,16 @@ export default function ChatsPage() {
 
         const ext = blobType.includes('ogg') ? 'ogg' : 'webm';
         const fileNamePrefix = mode === 'video' ? 'video-note' : 'voice-message';
-        const file = new File([blob], `${fileNamePrefix}-${Date.now()}.${ext}`, {
-          type: blobType,
+        const fileName = `${fileNamePrefix}-${Date.now()}.${ext}`;
+        const url = URL.createObjectURL(blob);
+        setPendingRecording({
+          mode,
+          blob,
+          url,
+          mimeType: blobType,
+          fileName,
         });
-
-        setUploading(true);
-        try {
-          const created = await uploadAttachment(chatId, file);
-          upsertLocalMessage(created);
-        } catch (rawError) {
-          setError(rawError instanceof Error ? rawError.message : 'Ошибка отправки записи');
-        } finally {
-          setUploading(false);
-        }
       };
-
       recorder.start(300);
     } catch (rawError) {
       stopRecorderStream();
@@ -1934,8 +2094,9 @@ export default function ChatsPage() {
 
   async function onLogout() {
     onEndCall();
-    stopRecording();
+    stopRecording(false);
     stopRecorderStream();
+    clearPendingRecording();
     await logout();
     router.replace('/login');
   }
@@ -1959,7 +2120,34 @@ export default function ChatsPage() {
   }
 
   function chatTitle(chat: ChatItem) {
-    return chat.peer?.displayName || chat.peer?.username || 'Личный чат';
+    if (chat.type === 'DIRECT') {
+      const fallback = chat.peer?.displayName || chat.peer?.username || chat.title || 'Личный чат';
+      return resolveAlias(chat.peer?.id, fallback);
+    }
+    if (chat.title?.trim()) {
+      return chat.title.trim();
+    }
+    if (chat.type === 'GROUP') {
+      return 'Группа';
+    }
+    if (chat.username) {
+      return `@${chat.username}`;
+    }
+    return 'Канал';
+  }
+
+  function chatMetaLabel(chat: ChatItem) {
+    if (chat.type === 'DIRECT') {
+      return chat.peer?.username ? `@${chat.peer.username}` : 'Личный чат';
+    }
+    if (chat.type === 'GROUP') {
+      const count = Math.max(0, chat.memberCount || 0);
+      return `${count} участников`;
+    }
+    if (chat.isPublic && chat.username) {
+      return `Публичный канал · @${chat.username}`;
+    }
+    return 'Приватный канал';
   }
 
   function avatarLetter(value: string) {
@@ -2017,7 +2205,15 @@ export default function ChatsPage() {
           return me.displayName || me.username;
         }
         const chat = chats.find((item) => item.peer?.id === userId);
-        return chat?.peer?.displayName || chat?.peer?.username || userId;
+        const fromMessage = messages.find((item) => item.senderId === userId)?.sender;
+        return resolveAlias(
+          userId,
+          chat?.peer?.displayName ||
+            chat?.peer?.username ||
+            fromMessage?.displayName ||
+            fromMessage?.username ||
+            userId,
+        );
       })
       .join(', ');
 
@@ -2033,6 +2229,61 @@ export default function ChatsPage() {
 
   function roleLabel(role: 'USER' | 'ADMIN') {
     return role === 'ADMIN' ? 'админ' : 'пользователь';
+  }
+
+  function resolveAlias(userId: string | null | undefined, fallback: string) {
+    if (!userId) {
+      return fallback;
+    }
+    const alias = nameAliases[userId]?.trim();
+    return alias || fallback;
+  }
+
+  function persistAliases(next: Record<string, string>) {
+    setNameAliases(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ALIASES_STORAGE_KEY, JSON.stringify(next));
+    }
+  }
+
+  function onRenamePeer() {
+    if (!activeChat?.peer?.id) {
+      return;
+    }
+    const current = nameAliases[activeChat.peer.id] ?? '';
+    const raw = window.prompt(
+      'Локальное имя для этого контакта (видно только вам)',
+      current,
+    );
+    if (raw === null) {
+      return;
+    }
+    const nextValue = raw.trim();
+    const nextAliases = { ...nameAliases };
+    if (nextValue) {
+      nextAliases[activeChat.peer.id] = nextValue;
+    } else {
+      delete nextAliases[activeChat.peer.id];
+    }
+    persistAliases(nextAliases);
+  }
+
+  async function onSaveProfile() {
+    setProfileSaving(true);
+    setError(null);
+    try {
+      const updated = await updateMe({
+        displayName: profileDisplayName.trim() || undefined,
+        bio: profileBio.trim() || undefined,
+        avatarUrl: profileAvatarUrl.trim() || undefined,
+      });
+      setMe(updated);
+      setProfileOpen(false);
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка обновления профиля');
+    } finally {
+      setProfileSaving(false);
+    }
   }
 
   function onSelectChat(chatId: string) {
@@ -2085,22 +2336,25 @@ export default function ChatsPage() {
 
   function formatSize(size: number) {
     if (size < 1024) {
-      return `${size} Б`;
+      return `${size} ?`;
     }
     if (size < 1024 * 1024) {
-      return `${(size / 1024).toFixed(1)} КБ`;
+      return `${(size / 1024).toFixed(1)} ??`;
     }
-    return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
+    return `${(size / (1024 * 1024)).toFixed(1)} ??`;
   }
 
   function messageAuthorLabel(message: MessageItem | MessageItem['replyToMessage']) {
     if (!message) {
-      return 'Пользователь';
+      return '????????????';
     }
     if (message.senderId === me?.id) {
-      return 'Вы';
+      return '??';
     }
-    return message.sender.displayName || message.sender.username;
+    return resolveAlias(
+      message.sender.id,
+      message.sender.displayName || message.sender.username,
+    );
   }
 
   function messageSnippet(content: string) {
@@ -2121,7 +2375,7 @@ export default function ChatsPage() {
     if (attachment.mimeType.startsWith('audio/')) {
       return attachment.fileName.startsWith('voice-message-')
         ? 'Голосовое'
-        : 'Аудио';
+        : 'РђСѓРґРёРѕ';
     }
     if (attachment.mimeType.startsWith('video/')) {
       return attachment.fileName.startsWith('video-note-') ? 'Кружок' : 'Видео';
@@ -2150,6 +2404,12 @@ export default function ChatsPage() {
   function chatPreview(chat: ChatItem) {
     const lastMessage = chat.lastMessage;
     if (!lastMessage) {
+      if (chat.type === 'GROUP') {
+        return 'Групповой чат';
+      }
+      if (chat.type === 'CHANNEL') {
+        return chat.isPublic ? 'Публичный канал' : 'Приватный канал';
+      }
       return 'Сообщений пока нет';
     }
     const firstAttachment = lastMessage.attachments?.[0];
@@ -2291,19 +2551,73 @@ export default function ChatsPage() {
               ) : null}
             </div>
           </div>
-          <button onClick={onLogout} type="button" className="sidebar-logout">
-            Выйти
-          </button>
+          <div className="sidebar-header-actions">
+            <button
+              onClick={() => setProfileOpen(true)}
+              type="button"
+              className="sidebar-logout"
+            >
+              Профиль
+            </button>
+            <button onClick={onLogout} type="button" className="sidebar-logout">
+              Выйти
+            </button>
+          </div>
         </header>
 
         <form onSubmit={onCreateChat} className="new-chat-form">
-          <input
-            value={newChatUsername}
-            onChange={(event) => setNewChatUsername(event.target.value)}
-            placeholder="Начать чат по логину"
-          />
+          <select
+            value={newChatType}
+            onChange={(event) =>
+              setNewChatType(event.target.value as 'DIRECT' | 'GROUP' | 'CHANNEL')
+            }
+            className="new-chat-mode"
+          >
+            <option value="DIRECT">Личный чат</option>
+            <option value="GROUP">Группа</option>
+            <option value="CHANNEL">Канал</option>
+          </select>
+          {newChatType === 'DIRECT' ? (
+            <input
+              value={newChatUsername}
+              onChange={(event) => setNewChatUsername(event.target.value)}
+              placeholder="Логин пользователя"
+            />
+          ) : (
+            <>
+              <input
+                value={newChatTitle}
+                onChange={(event) => setNewChatTitle(event.target.value)}
+                placeholder={newChatType === 'GROUP' ? 'Название группы' : 'Название канала'}
+              />
+              <input
+                value={newChatMembers}
+                onChange={(event) => setNewChatMembers(event.target.value)}
+                placeholder="Участники: логин1, логин2"
+              />
+              {newChatType === 'CHANNEL' ? (
+                <>
+                  <label className="channel-public-toggle">
+                    <input
+                      type="checkbox"
+                      checked={newChannelPublic}
+                      onChange={(event) => setNewChannelPublic(event.target.checked)}
+                    />
+                    <span>Публичный канал</span>
+                  </label>
+                  {newChannelPublic ? (
+                    <input
+                      value={newChannelUsername}
+                      onChange={(event) => setNewChannelUsername(event.target.value)}
+                      placeholder="Username канала"
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          )}
           <button type="submit" disabled={creatingChat}>
-            {creatingChat ? '...' : 'Старт'}
+            {creatingChat ? '...' : 'Создать'}
           </button>
         </form>
 
@@ -2329,14 +2643,14 @@ export default function ChatsPage() {
                 onClick={() => void onTriggerAdminBuild('windows')}
                 disabled={Boolean(adminBuildTriggering)}
               >
-                {adminBuildTriggering === 'windows' ? 'Сборка...' : 'Build Windows'}
+                {adminBuildTriggering === 'windows' ? 'РЎР±РѕСЂРєР°...' : 'Build Windows'}
               </button>
               <button
                 type="button"
                 onClick={() => void onTriggerAdminBuild('android')}
                 disabled={Boolean(adminBuildTriggering)}
               >
-                {adminBuildTriggering === 'android' ? 'Сборка...' : 'Build Android'}
+                {adminBuildTriggering === 'android' ? 'РЎР±РѕСЂРєР°...' : 'Build Android'}
               </button>
             </div>
 
@@ -2399,8 +2713,16 @@ export default function ChatsPage() {
           </section>
         ) : null}
 
+        <div className="chat-list-search">
+          <input
+            value={chatListSearch}
+            onChange={(event) => setChatListSearch(event.target.value)}
+            placeholder="Поиск по чатам"
+          />
+        </div>
+
         <div className="chat-list">
-          {chats.map((chat) => (
+          {filteredChats.map((chat) => (
             <button
               key={chat.id}
               className={`chat-item ${chat.id === activeChatId ? 'active' : ''}`}
@@ -2409,14 +2731,16 @@ export default function ChatsPage() {
             >
               <div
                 className="chat-avatar"
-                style={avatarStyle(chat.peer?.username || chat.id)}
+                style={avatarStyle(chat.peer?.username || chat.username || chat.title || chat.id)}
               >
                 <span>{avatarLetter(chatTitle(chat))}</span>
-                <i
-                  className={`chat-avatar-status ${
-                    isOnline(chat.peer?.id) ? 'online' : 'offline'
-                  }`}
-                />
+                {chat.type === 'DIRECT' ? (
+                  <i
+                    className={`chat-avatar-status ${
+                      isOnline(chat.peer?.id) ? 'online' : 'offline'
+                    }`}
+                  />
+                ) : null}
               </div>
               <div className="chat-item-main">
                 <div className="chat-item-row">
@@ -2424,7 +2748,9 @@ export default function ChatsPage() {
                   <span className="chat-item-time">{formatChatItemTime(chat)}</span>
                 </div>
                 <div className="chat-item-row chat-item-bottom">
-                  <span className="preview">{chatPreview(chat)}</span>
+                  <span className="preview">
+                    {chat.lastMessage ? chatPreview(chat) : chatMetaLabel(chat)}
+                  </span>
                   {chat.unreadCount > 0 ? (
                     <span className="unread-badge">{chat.unreadCount}</span>
                   ) : null}
@@ -2432,8 +2758,12 @@ export default function ChatsPage() {
               </div>
             </button>
           ))}
-          {chats.length === 0 ? (
-            <p className="muted">Чатов пока нет. Создай первый чат выше.</p>
+          {filteredChats.length === 0 ? (
+            <p className="muted">
+              {chats.length === 0
+                ? 'Чатов пока нет. Создай первый чат выше.'
+                : 'По вашему запросу ничего не найдено.'}
+            </p>
           ) : null}
         </div>
       </aside>
@@ -2454,19 +2784,28 @@ export default function ChatsPage() {
               <div className="chat-peer-head">
                 <div
                   className="chat-peer-avatar"
-                  style={avatarStyle(activeChat.peer?.username || activeChat.id)}
+                  style={avatarStyle(
+                    activeChat.peer?.username ||
+                      activeChat.username ||
+                      activeChat.title ||
+                      activeChat.id,
+                  )}
                 >
                   {avatarLetter(chatTitle(activeChat))}
                 </div>
                 <div className="chat-peer-meta">
                   <h3>{chatTitle(activeChat)}</h3>
-                  <span
-                    className={`peer-status ${
-                      isOnline(activeChat.peer?.id) ? 'online' : 'offline'
-                    }`}
-                  >
-                    {formatStatus(activeChat.peer?.id)}
-                  </span>
+                  {activeChat.type === 'DIRECT' ? (
+                    <span
+                      className={`peer-status ${
+                        isOnline(activeChat.peer?.id) ? 'online' : 'offline'
+                      }`}
+                    >
+                      {formatStatus(activeChat.peer?.id)}
+                    </span>
+                  ) : (
+                    <span className="peer-status">{chatMetaLabel(activeChat)}</span>
+                  )}
                   {activeChat.type === 'DIRECT' ? (
                     <span
                       className={`peer-read-counter ${
@@ -2491,20 +2830,29 @@ export default function ChatsPage() {
                 </button>
               </form>
               <div className="call-actions">
-                <button
-                  type="button"
-                  onClick={() => onStartCall('audio')}
-                  disabled={inCall || !canUseMediaDevices()}
-                >
-                  Аудио
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onStartCall('video')}
-                  disabled={inCall || !canUseMediaDevices()}
-                >
-                  Видео
-                </button>
+                {activeChat.peer ? (
+                  <button type="button" onClick={onRenamePeer}>
+                    Переименовать
+                  </button>
+                ) : null}
+                {activeChat.type === 'DIRECT' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onStartCall('audio')}
+                      disabled={inCall || !canUseMediaDevices()}
+                    >
+                      Аудио
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onStartCall('video')}
+                      disabled={inCall || !canUseMediaDevices()}
+                    >
+                      Видео
+                    </button>
+                  </>
+                ) : null}
               </div>
             </header>
 
@@ -2636,7 +2984,7 @@ export default function ChatsPage() {
                           className="video-box"
                         />
                         <figcaption className="video-label">
-                          {me?.displayName || me?.username || 'Вы'}
+                          {me?.displayName || me?.username || '??'}
                         </figcaption>
                       </figure>
                     </div>
@@ -2838,7 +3186,7 @@ export default function ChatsPage() {
                 </div>
                 <div className="composer-context-actions">
                   <label className="forward-target-field">
-                    <span className="muted">Куда</span>
+                    <span className="muted">РљСѓРґР°</span>
                     <select
                       className="forward-target-select"
                       value={forwardTargetChatId ?? ''}
@@ -2904,17 +3252,68 @@ export default function ChatsPage() {
                   onClick={() => onStartRecording('video')}
                   disabled={uploading || Boolean(recordingMode)}
                 >
-                  Кружок
+                  РљСЂСѓР¶РѕРє
                 </button>
                 {recordingMode ? (
                   <>
                     <span className="muted">
                       Идёт запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
                     </span>
-                    <button type="button" onClick={stopRecording}>
-                      Остановить и отправить
+                    <button type="button" onClick={() => stopRecording(true)}>
+                      Остановить
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button danger-link"
+                      onClick={() => stopRecording(false)}
+                    >
+                      Отмена
                     </button>
                   </>
+                ) : null}
+                {pendingRecording ? (
+                  <div className="recording-preview-card">
+                    <strong>
+                      {pendingRecording.mode === 'video'
+                        ? 'Кружок готов к отправке'
+                        : 'Голосовое готово к отправке'}
+                    </strong>
+                    {pendingRecording.mode === 'video' ? (
+                      <div className="video-note-wrap">
+                        <video
+                          controls
+                          playsInline
+                          preload="metadata"
+                          src={pendingRecording.url}
+                          className="video-note-player"
+                        />
+                      </div>
+                    ) : (
+                      <audio
+                        controls
+                        preload="metadata"
+                        src={pendingRecording.url}
+                        className="audio-player"
+                      />
+                    )}
+                    <div className="recording-preview-actions">
+                      <button
+                        type="button"
+                        onClick={() => void onSendPendingRecording()}
+                        disabled={uploading}
+                      >
+                        {uploading ? 'Отправка...' : 'Отправить'}
+                      </button>
+                      <button
+                        type="button"
+                        className="link-button danger-link"
+                        onClick={clearPendingRecording}
+                        disabled={uploading}
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
                 {selectedFile ? (
                   <>
@@ -2951,6 +3350,70 @@ export default function ChatsPage() {
         )}
       </section>
 
+      {profileOpen ? (
+        <div className="profile-modal-backdrop" onClick={() => setProfileOpen(false)}>
+          <section
+            className="profile-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3>Профиль</h3>
+            <label>
+              Имя
+              <input
+                value={profileDisplayName}
+                onChange={(event) => setProfileDisplayName(event.target.value)}
+                placeholder={me?.username || 'Имя'}
+              />
+            </label>
+            <label>
+              BIO
+              <input
+                value={profileBio}
+                onChange={(event) => setProfileBio(event.target.value)}
+                placeholder="Коротко о себе"
+              />
+            </label>
+            <label>
+              Ссылка на аватар
+              <input
+                value={profileAvatarUrl}
+                onChange={(event) => setProfileAvatarUrl(event.target.value)}
+                placeholder="https://..."
+              />
+            </label>
+            <label>
+              Тема
+              <select
+                value={themeMode}
+                onChange={(event) =>
+                  setThemeMode(event.target.value as 'light' | 'dark' | 'navy')
+                }
+              >
+                <option value="light">Светлая</option>
+                <option value="dark">Тёмная</option>
+                <option value="navy">Midnight</option>
+              </select>
+            </label>
+            <div className="profile-modal-actions">
+              <button
+                type="button"
+                onClick={() => void onSaveProfile()}
+                disabled={profileSaving}
+              >
+                {profileSaving ? 'Сохранение...' : 'Сохранить'}
+              </button>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setProfileOpen(false)}
+              >
+                Закрыть
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {notice ? (
         <p className={`floating-notice ${error ? 'with-error' : ''}`}>{notice}</p>
       ) : null}
@@ -2958,4 +3421,7 @@ export default function ChatsPage() {
     </main>
   );
 }
+
+
+
 

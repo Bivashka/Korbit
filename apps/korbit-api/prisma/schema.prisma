@@ -83,6 +83,12 @@ model Invite {
 model Chat {
   id              String       @id @default(cuid())
   type            ChatType     @default(DIRECT)
+  title           String?
+  description     String?
+  avatarUrl       String?
+  username        String?      @unique
+  isPublic        Boolean      @default(false)
+  ownerId         String?
   pinnedMessageId String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -93,6 +99,7 @@ model Chat {
   pinnedMessage   Message?     @relation("PinnedChatMessage", fields: [pinnedMessageId], references: [id], onDelete: SetNull)
 
   @@index([pinnedMessageId])
+  @@index([ownerId])
 }
 
 model DirectChat {

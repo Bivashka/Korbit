@@ -207,6 +207,17 @@ export async function getMe() {
   return request<UserProfile>('/users/me');
 }
 
+export async function updateMe(params: {
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+}) {
+  return request<UserProfile>('/users/me', {
+    method: 'PATCH',
+    body: params,
+  });
+}
+
 export async function listChats() {
   return request<ChatItem[]>('/chats');
 }
@@ -215,6 +226,21 @@ export async function createDirectChat(username: string) {
   return request<ChatItem>('/chats/direct', {
     method: 'POST',
     body: { username },
+  });
+}
+
+export async function createSharedChat(params: {
+  type: 'GROUP' | 'CHANNEL';
+  title: string;
+  description?: string;
+  avatarUrl?: string;
+  isPublic?: boolean;
+  username?: string;
+  members?: string[];
+}) {
+  return request<ChatItem>('/chats', {
+    method: 'POST',
+    body: params,
   });
 }
 

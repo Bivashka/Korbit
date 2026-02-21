@@ -22,6 +22,7 @@ import { JwtPayload } from '../common/interfaces/jwt-payload.interface';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ChatsService } from './chats.service';
 import { CreateDirectChatDto } from './dto/create-direct-chat.dto';
+import { CreateSharedChatDto } from './dto/create-shared-chat.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
@@ -49,6 +50,14 @@ export class ChatsController {
     @Body() dto: CreateDirectChatDto,
   ) {
     return this.chatsService.createDirectChat(user.sub, dto);
+  }
+
+  @Post()
+  createSharedChat(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateSharedChatDto,
+  ) {
+    return this.chatsService.createSharedChat(user.sub, dto);
   }
 
   @Get(':chatId/messages')

@@ -59,6 +59,13 @@ export type ChatItem = {
   id: string;
   type: 'DIRECT' | 'GROUP' | 'CHANNEL';
   peer: ChatPeer | null;
+  title: string | null;
+  description: string | null;
+  avatarUrl: string | null;
+  username: string | null;
+  isPublic: boolean;
+  ownerId: string | null;
+  memberCount: number;
   lastReadMessageId: string | null;
   peerLastReadMessageId: string | null;
   lastMessage: MessageItem | null;

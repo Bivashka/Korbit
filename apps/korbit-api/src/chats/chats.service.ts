@@ -7,6 +7,7 @@ import {
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDirectChatDto } from './dto/create-direct-chat.dto';
+import { CreateSharedChatDto } from './dto/create-shared-chat.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
 import { SearchMessagesQueryDto } from './dto/search-messages-query.dto';
@@ -130,12 +131,24 @@ export class ChatsService {
     );
 
     return memberships.map((membership, index) => {
-      const peer = membership.chat.members.find((m) => m.userId !== userId)?.user;
-      const peerMembership = membership.chat.members.find((m) => m.userId !== userId);
+      const isDirect = membership.chat.type === 'DIRECT';
+      const peer = isDirect
+        ? membership.chat.members.find((m) => m.userId !== userId)?.user
+        : null;
+      const peerMembership = isDirect
+        ? membership.chat.members.find((m) => m.userId !== userId)
+        : null;
       return {
         id: membership.chat.id,
         type: membership.chat.type,
         peer,
+        title: membership.chat.title ?? null,
+        description: membership.chat.description ?? null,
+        avatarUrl: membership.chat.avatarUrl ?? null,
+        username: membership.chat.username ?? null,
+        isPublic: membership.chat.isPublic ?? false,
+        ownerId: membership.chat.ownerId ?? null,
+        memberCount: membership.chat.members.length,
         lastReadMessageId: membership.lastReadMessageId,
         peerLastReadMessageId: peerMembership?.lastReadMessageId ?? null,
         lastMessage: membership.chat.messages[0] ?? null,
@@ -219,6 +232,87 @@ export class ChatsService {
         if (fallback) {
           return this.mapChatResponse(fallback.chat, userId);
         }
+      }
+      throw error;
+    }
+  }
+
+  async createSharedChat(userId: string, dto: CreateSharedChatDto) {
+    const title = dto.title.trim();
+    if (!title) {
+      throw new BadRequestException('Название чата не указано');
+    }
+
+    const description = dto.description?.trim() || null;
+    const avatarUrl = dto.avatarUrl?.trim() || null;
+    const isPublic = dto.type === 'CHANNEL' ? Boolean(dto.isPublic) : false;
+    const username = dto.username?.trim().toLowerCase() || null;
+
+    if (isPublic && !username) {
+      throw new BadRequestException('Для публичного канала нужен username');
+    }
+
+    if (dto.type === 'GROUP' && dto.isPublic) {
+      throw new BadRequestException('Группы могут быть только приватными');
+    }
+
+    const requestedUsernames = Array.from(
+      new Set((dto.members ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean)),
+    );
+
+    const users = requestedUsernames.length
+      ? await this.prisma.user.findMany({
+          where: {
+            username: {
+              in: requestedUsernames,
+            },
+          },
+          select: {
+            id: true,
+            username: true,
+          },
+        })
+      : [];
+
+    const found = new Set(users.map((item) => item.username));
+    const missing = requestedUsernames.filter((usernameValue) => !found.has(usernameValue));
+    if (missing.length > 0) {
+      throw new NotFoundException(`Пользователи не найдены: ${missing.join(', ')}`);
+    }
+
+    const memberIds = new Set<string>([userId, ...users.map((item) => item.id)]);
+
+    try {
+      const created = await this.prisma.$transaction(async (tx) => {
+        const chat = await tx.chat.create({
+          data: {
+            type: dto.type,
+            title,
+            description,
+            avatarUrl,
+            isPublic,
+            username: isPublic ? username : null,
+            ownerId: userId,
+          },
+        });
+
+        await tx.chatMember.createMany({
+          data: Array.from(memberIds).map((memberId) => ({
+            chatId: chat.id,
+            userId: memberId,
+          })),
+        });
+
+        return tx.chat.findUniqueOrThrow({
+          where: { id: chat.id },
+          include: this.directChatInclude(),
+        });
+      });
+
+      return this.mapChatResponse(created, userId);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new BadRequestException('Такой username канала уже занят');
       }
       throw error;
     }
@@ -772,6 +866,12 @@ export class ChatsService {
     chat: {
       id: string;
       type: string;
+      title: string | null;
+      description: string | null;
+      avatarUrl: string | null;
+      username: string | null;
+      isPublic: boolean;
+      ownerId: string | null;
       members: Array<{
         userId: string;
         lastReadMessageId: string | null;
@@ -788,13 +888,22 @@ export class ChatsService {
     userId: string,
   ) {
     const ownMembership = chat.members.find((member) => member.userId === userId);
+    const peerMember = chat.type === 'DIRECT'
+      ? chat.members.find((member) => member.userId !== userId)
+      : null;
     return {
       id: chat.id,
       type: chat.type,
-      peer: chat.members.find((member) => member.userId !== userId)?.user ?? null,
+      peer: peerMember?.user ?? null,
+      title: chat.title ?? null,
+      description: chat.description ?? null,
+      avatarUrl: chat.avatarUrl ?? null,
+      username: chat.username ?? null,
+      isPublic: chat.isPublic ?? false,
+      ownerId: chat.ownerId ?? null,
+      memberCount: chat.members.length,
       lastReadMessageId: ownMembership?.lastReadMessageId ?? null,
-      peerLastReadMessageId:
-        chat.members.find((member) => member.userId !== userId)?.lastReadMessageId ?? null,
+      peerLastReadMessageId: peerMember?.lastReadMessageId ?? null,
       lastMessage: chat.messages[0] ?? null,
       pinnedMessage: chat.pinnedMessage ?? null,
       unreadCount: 0,
