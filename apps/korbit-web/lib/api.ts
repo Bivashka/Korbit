@@ -4,9 +4,11 @@ import {
   AttachmentItem,
   AuthPayload,
   BuildTarget,
+  ChatMembersPayload,
   ChatItem,
   MessageItem,
   MessageReference,
+  PublicChannelItem,
   UserProfile,
 } from './types';
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from './session';
@@ -210,12 +212,43 @@ export async function getMe() {
 export async function updateMe(params: {
   displayName?: string;
   bio?: string;
-  avatarUrl?: string;
 }) {
   return request<UserProfile>('/users/me', {
     method: 'PATCH',
     body: params,
   });
+}
+
+export async function uploadMyAvatar(file: File) {
+  const token = getAccessToken();
+  if (!token) {
+    throw new ApiError('Не выполнен вход', 401);
+  }
+
+  const form = new FormData();
+  form.append('file', file);
+
+  const response = await fetch(`${API_URL}/users/me/avatar`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const details = await safeJson(response);
+    const message =
+      typeof details === 'object' &&
+      details &&
+      'message' in details &&
+      typeof details.message === 'string'
+        ? details.message
+        : `Ошибка загрузки аватара (${response.status})`;
+    throw new ApiError(message, response.status, details);
+  }
+
+  return (await response.json()) as UserProfile;
 }
 
 export async function listChats() {
@@ -241,6 +274,39 @@ export async function createSharedChat(params: {
   return request<ChatItem>('/chats', {
     method: 'POST',
     body: params,
+  });
+}
+
+export async function searchPublicChannels(query: string, limit = 20) {
+  const params = new URLSearchParams();
+  if (query.trim()) {
+    params.set('q', query.trim());
+  }
+  params.set('limit', String(limit));
+  return request<PublicChannelItem[]>(`/chats/public/search?${params.toString()}`);
+}
+
+export async function joinPublicChannel(username: string) {
+  return request<ChatItem>('/chats/public/join', {
+    method: 'POST',
+    body: { username },
+  });
+}
+
+export async function listChatMembers(chatId: string) {
+  return request<ChatMembersPayload>(`/chats/${chatId}/members`);
+}
+
+export async function addChatMember(chatId: string, username: string) {
+  return request<ChatMembersPayload>(`/chats/${chatId}/members`, {
+    method: 'POST',
+    body: { username },
+  });
+}
+
+export async function removeChatMember(chatId: string, memberId: string) {
+  return request<ChatMembersPayload>(`/chats/${chatId}/members/${memberId}`, {
+    method: 'DELETE',
   });
 }
 

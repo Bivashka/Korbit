@@ -24,9 +24,12 @@ import { ChatsService } from './chats.service';
 import { CreateDirectChatDto } from './dto/create-direct-chat.dto';
 import { CreateSharedChatDto } from './dto/create-shared-chat.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
+import { JoinPublicChannelDto } from './dto/join-public-channel.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
+import { ManageChatMemberDto } from './dto/manage-chat-member.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
 import { SearchMessagesQueryDto } from './dto/search-messages-query.dto';
+import { SearchPublicChannelsQueryDto } from './dto/search-public-channels-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { ToggleReactionDto } from './dto/toggle-reaction.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
@@ -58,6 +61,45 @@ export class ChatsController {
     @Body() dto: CreateSharedChatDto,
   ) {
     return this.chatsService.createSharedChat(user.sub, dto);
+  }
+
+  @Get('public/search')
+  searchPublicChannels(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: SearchPublicChannelsQueryDto,
+  ) {
+    return this.chatsService.searchPublicChannels(user.sub, query);
+  }
+
+  @Post('public/join')
+  joinPublicChannel(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: JoinPublicChannelDto,
+  ) {
+    return this.chatsService.joinPublicChannel(user.sub, dto.username);
+  }
+
+  @Get(':chatId/members')
+  listMembers(@CurrentUser() user: JwtPayload, @Param('chatId') chatId: string) {
+    return this.chatsService.listMembers(user.sub, chatId);
+  }
+
+  @Post(':chatId/members')
+  addMember(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Body() dto: ManageChatMemberDto,
+  ) {
+    return this.chatsService.addMember(user.sub, user.role, chatId, dto.username);
+  }
+
+  @Delete(':chatId/members/:memberId')
+  removeMember(
+    @CurrentUser() user: JwtPayload,
+    @Param('chatId') chatId: string,
+    @Param('memberId') memberId: string,
+  ) {
+    return this.chatsService.removeMember(user.sub, user.role, chatId, memberId);
   }
 
   @Get(':chatId/messages')

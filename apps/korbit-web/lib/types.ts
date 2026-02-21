@@ -73,6 +73,34 @@ export type ChatItem = {
   unreadCount: number;
 };
 
+export type ChatMemberItem = {
+  id: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  joinedAt: string;
+  isOwner: boolean;
+};
+
+export type ChatMembersPayload = {
+  chatId: string;
+  type: 'GROUP' | 'CHANNEL';
+  ownerId: string | null;
+  members: ChatMemberItem[];
+};
+
+export type PublicChannelItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  avatarUrl: string | null;
+  username: string | null;
+  ownerId: string | null;
+  memberCount: number;
+  joined: boolean;
+  updatedAt: string;
+};
+
 export type AttachmentItem = {
   id: string;
   messageId: string;

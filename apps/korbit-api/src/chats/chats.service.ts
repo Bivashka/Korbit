@@ -11,6 +11,7 @@ import { CreateSharedChatDto } from './dto/create-shared-chat.dto';
 import { ListMessagesQueryDto } from './dto/list-messages-query.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
 import { SearchMessagesQueryDto } from './dto/search-messages-query.dto';
+import { SearchPublicChannelsQueryDto } from './dto/search-public-channels-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 
@@ -316,6 +317,249 @@ export class ChatsService {
       }
       throw error;
     }
+  }
+
+  async searchPublicChannels(userId: string, query: SearchPublicChannelsQueryDto) {
+    const text = query.q?.trim();
+    const where: Prisma.ChatWhereInput = {
+      type: 'CHANNEL',
+      isPublic: true,
+      username: {
+        not: null,
+      },
+      ...(text
+        ? {
+            OR: [
+              {
+                title: {
+                  contains: text,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                username: {
+                  contains: text.toLowerCase(),
+                  mode: 'insensitive',
+                },
+              },
+              {
+                description: {
+                  contains: text,
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const channels = await this.prisma.chat.findMany({
+      where,
+      take: query.limit ?? 20,
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        avatarUrl: true,
+        username: true,
+        ownerId: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            members: true,
+          },
+        },
+        members: {
+          where: { userId },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+
+    return channels.map((channel) => ({
+      id: channel.id,
+      title: channel.title ?? '',
+      description: channel.description ?? null,
+      avatarUrl: channel.avatarUrl ?? null,
+      username: channel.username ?? null,
+      ownerId: channel.ownerId ?? null,
+      memberCount: channel._count.members,
+      joined: channel.members.length > 0,
+      updatedAt: channel.updatedAt,
+    }));
+  }
+
+  async joinPublicChannel(userId: string, username: string) {
+    const normalized = username.trim().replace(/^@+/, '').toLowerCase();
+    if (!normalized) {
+      throw new BadRequestException('Username канала не указан');
+    }
+
+    const channel = await this.prisma.chat.findUnique({
+      where: {
+        username: normalized,
+      },
+      select: {
+        id: true,
+        type: true,
+        isPublic: true,
+      },
+    });
+
+    if (!channel || channel.type !== 'CHANNEL' || !channel.isPublic) {
+      throw new NotFoundException('Публичный канал не найден');
+    }
+
+    const existingMembership = await this.prisma.chatMember.findUnique({
+      where: {
+        chatId_userId: {
+          chatId: channel.id,
+          userId,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!existingMembership) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.chatMember.create({
+          data: {
+            chatId: channel.id,
+            userId,
+          },
+        });
+        await tx.chat.update({
+          where: { id: channel.id },
+          data: {
+            updatedAt: new Date(),
+          },
+        });
+      });
+    }
+
+    const fullChannel = await this.prisma.chat.findUniqueOrThrow({
+      where: {
+        id: channel.id,
+      },
+      include: this.directChatInclude(),
+    });
+
+    return this.mapChatResponse(fullChannel, userId);
+  }
+
+  async listMembers(userId: string, chatId: string) {
+    await this.assertMember(chatId, userId);
+    return this.getMembersPayload(chatId);
+  }
+
+  async addMember(
+    requesterId: string,
+    requesterRole: UserRole,
+    chatId: string,
+    username: string,
+  ) {
+    await this.assertCanManageMembers(chatId, requesterId, requesterRole);
+
+    const normalized = username.trim().toLowerCase();
+    if (!normalized) {
+      throw new BadRequestException('Логин пользователя не указан');
+    }
+
+    const targetUser = await this.prisma.user.findUnique({
+      where: {
+        username: normalized,
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (!targetUser) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    const existing = await this.prisma.chatMember.findUnique({
+      where: {
+        chatId_userId: {
+          chatId,
+          userId: targetUser.id,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (!existing) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.chatMember.create({
+          data: {
+            chatId,
+            userId: targetUser.id,
+          },
+        });
+        await tx.chat.update({
+          where: {
+            id: chatId,
+          },
+          data: {
+            updatedAt: new Date(),
+          },
+        });
+      });
+    }
+
+    return this.getMembersPayload(chatId);
+  }
+
+  async removeMember(
+    requesterId: string,
+    requesterRole: UserRole,
+    chatId: string,
+    memberId: string,
+  ) {
+    const chat = await this.assertCanManageMembers(chatId, requesterId, requesterRole);
+
+    const membership = await this.prisma.chatMember.findUnique({
+      where: {
+        chatId_userId: {
+          chatId,
+          userId: memberId,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('Участник не найден');
+    }
+
+    if (chat.ownerId && memberId === chat.ownerId) {
+      throw new BadRequestException('Нельзя удалить владельца чата');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.chatMember.delete({
+        where: {
+          id: membership.id,
+        },
+      });
+      await tx.chat.update({
+        where: {
+          id: chatId,
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+    });
+
+    return this.getMembersPayload(chatId);
   }
 
   async listMessages(
@@ -853,6 +1097,84 @@ export class ChatsService {
       select: { chatId: true },
     });
     return memberships.map((item) => item.chatId);
+  }
+
+  private async getMembersPayload(chatId: string) {
+    const chat = await this.prisma.chat.findUnique({
+      where: {
+        id: chatId,
+      },
+      select: {
+        id: true,
+        type: true,
+        ownerId: true,
+      },
+    });
+    if (!chat) {
+      throw new NotFoundException('Чат не найден');
+    }
+
+    const members = await this.prisma.chatMember.findMany({
+      where: {
+        chatId,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      include: {
+        user: {
+          select: this.userSelect(),
+        },
+      },
+    });
+
+    return {
+      chatId: chat.id,
+      type: chat.type,
+      ownerId: chat.ownerId,
+      members: members.map((membership) => ({
+        ...membership.user,
+        joinedAt: membership.createdAt,
+        isOwner: chat.ownerId === membership.userId,
+      })),
+    };
+  }
+
+  private async assertCanManageMembers(
+    chatId: string,
+    userId: string,
+    role: UserRole,
+  ) {
+    const chat = await this.prisma.chat.findUnique({
+      where: {
+        id: chatId,
+      },
+      select: {
+        id: true,
+        type: true,
+        ownerId: true,
+      },
+    });
+    if (!chat) {
+      throw new NotFoundException('Чат не найден');
+    }
+    if (chat.type === 'DIRECT') {
+      throw new BadRequestException('Управление участниками недоступно для личного чата');
+    }
+
+    if (role === 'ADMIN') {
+      return chat;
+    }
+
+    const isMember = await this.isMember(chatId, userId);
+    if (!isMember) {
+      throw new ForbiddenException('Вы не участник этого чата');
+    }
+    if (!chat.ownerId || chat.ownerId !== userId) {
+      throw new ForbiddenException('Только владелец чата может менять участников');
+    }
+
+    return chat;
   }
 
   private async assertMember(chatId: string, userId: string) {

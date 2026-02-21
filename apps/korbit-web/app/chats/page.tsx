@@ -4,6 +4,7 @@ import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from 'rea
 import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import {
+  addChatMember,
   ApiError,
   createDirectChat,
   createSharedChat,
@@ -12,18 +13,21 @@ import {
   getMe,
   getSocketConfig,
   isAuthenticated,
+  joinPublicChannel,
+  listChatMembers,
   listAdminBuilds,
   listChats,
   listMessages,
   logout,
   markRead,
   pinMessage,
+  removeChatMember,
+  searchPublicChannels,
   searchMessages,
   sendMessage,
   toggleReaction,
   triggerAdminBuild,
   unpinMessage,
-  updateMe,
   updateMessage,
   uploadAttachment,
 } from '../../lib/api';
@@ -33,9 +37,11 @@ import {
   AdminBuildState,
   BuildTarget,
   AttachmentItem,
+  ChatMembersPayload,
   ChatItem,
   MessageItem,
   MessageReference,
+  PublicChannelItem,
   UserProfile,
 } from '../../lib/types';
 
@@ -179,13 +185,18 @@ export default function ChatsPage() {
     mimeType: string;
     fileName: string;
   } | null>(null);
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'navy'>('light');
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'navy'>('dark');
   const [nameAliases, setNameAliases] = useState<Record<string, string>>({});
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [profileDisplayName, setProfileDisplayName] = useState('');
-  const [profileBio, setProfileBio] = useState('');
-  const [profileAvatarUrl, setProfileAvatarUrl] = useState('');
-  const [profileSaving, setProfileSaving] = useState(false);
+  const [publicChannelQuery, setPublicChannelQuery] = useState('');
+  const [publicChannelResults, setPublicChannelResults] = useState<PublicChannelItem[]>([]);
+  const [publicChannelSearching, setPublicChannelSearching] = useState(false);
+  const [joiningPublicChannelUsername, setJoiningPublicChannelUsername] = useState<
+    string | null
+  >(null);
+  const [chatMembers, setChatMembers] = useState<ChatMembersPayload | null>(null);
+  const [chatMembersLoading, setChatMembersLoading] = useState(false);
+  const [chatMembersSaving, setChatMembersSaving] = useState(false);
+  const [memberUsernameInput, setMemberUsernameInput] = useState('');
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
@@ -258,6 +269,13 @@ export default function ChatsPage() {
       return haystack.includes(normalizedChatListSearch);
     });
   }, [chats, normalizedChatListSearch, nameAliases]);
+  const canManageMembers = Boolean(
+    me &&
+      activeChat &&
+      activeChat.type !== 'DIRECT' &&
+      (me.role === 'ADMIN' || activeChat.ownerId === me.id),
+  );
+  const showMembersPanel = Boolean(activeChat && activeChat.type !== 'DIRECT');
 
   function canUseMediaDevices() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -496,15 +514,6 @@ export default function ChatsPage() {
   }, [themeMode]);
 
   useEffect(() => {
-    if (!me) {
-      return;
-    }
-    setProfileDisplayName(me.displayName ?? '');
-    setProfileBio(me.bio ?? '');
-    setProfileAvatarUrl(me.avatarUrl ?? '');
-  }, [me]);
-
-  useEffect(() => {
     if (!isAuthenticated()) {
       router.replace('/login');
       return;
@@ -551,6 +560,40 @@ export default function ChatsPage() {
 
     void loadMessages();
   }, [activeChatId]);
+
+  useEffect(() => {
+    if (!activeChatId || activeChat?.type === 'DIRECT') {
+      setChatMembers(null);
+      setMemberUsernameInput('');
+      return;
+    }
+
+    let cancelled = false;
+    const loadMembers = async () => {
+      setChatMembersLoading(true);
+      try {
+        const payload = await listChatMembers(activeChatId);
+        if (!cancelled) {
+          setChatMembers(payload);
+        }
+      } catch (rawError) {
+        if (!cancelled) {
+          setError(
+            rawError instanceof Error ? rawError.message : 'Ошибка загрузки участников',
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setChatMembersLoading(false);
+        }
+      }
+    };
+
+    void loadMembers();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChat?.type, activeChatId]);
 
   useEffect(() => {
     setReplyToMessage((previous) =>
@@ -1259,6 +1302,122 @@ export default function ChatsPage() {
       );
     } finally {
       setAdminBuildTriggering(null);
+    }
+  }
+
+  function syncChatMemberCount(chatId: string, memberCount: number) {
+    setChats((previous) =>
+      previous.map((chat) =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              memberCount,
+            }
+          : chat,
+      ),
+    );
+  }
+
+  async function onSearchPublicChannels(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    const query = publicChannelQuery.trim();
+    if (!query) {
+      setPublicChannelResults([]);
+      return;
+    }
+
+    setPublicChannelSearching(true);
+    try {
+      const found = await searchPublicChannels(query, 20);
+      setPublicChannelResults(found);
+    } catch (rawError) {
+      setError(
+        rawError instanceof Error ? rawError.message : 'Ошибка поиска публичных каналов',
+      );
+    } finally {
+      setPublicChannelSearching(false);
+    }
+  }
+
+  async function onJoinPublicChannel(username: string) {
+    const normalized = username.trim().replace(/^@+/, '').toLowerCase();
+    if (!normalized) {
+      return;
+    }
+
+    setJoiningPublicChannelUsername(normalized);
+    setError(null);
+    try {
+      const joinedChat = await joinPublicChannel(normalized);
+      setChats((previous) => {
+        const existing = previous.find((item) => item.id === joinedChat.id);
+        if (existing) {
+          return [joinedChat, ...previous.filter((item) => item.id !== joinedChat.id)];
+        }
+        return [joinedChat, ...previous];
+      });
+      setPublicChannelResults((previous) =>
+        previous.map((item) =>
+          item.username === normalized
+            ? {
+                ...item,
+                joined: true,
+                memberCount: item.memberCount + 1,
+              }
+            : item,
+        ),
+      );
+      setActiveChatId(joinedChat.id);
+      showNotice('Вы вступили в канал');
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка вступления в канал');
+    } finally {
+      setJoiningPublicChannelUsername(null);
+    }
+  }
+
+  async function onAddMember(event: FormEvent) {
+    event.preventDefault();
+    if (!activeChatId || !canManageMembers) {
+      return;
+    }
+    const username = memberUsernameInput.trim();
+    if (!username) {
+      return;
+    }
+
+    setChatMembersSaving(true);
+    setError(null);
+    try {
+      const payload = await addChatMember(activeChatId, username);
+      setChatMembers(payload);
+      syncChatMemberCount(activeChatId, payload.members.length);
+      setMemberUsernameInput('');
+      showNotice('Участник добавлен');
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка добавления участника');
+    } finally {
+      setChatMembersSaving(false);
+    }
+  }
+
+  async function onRemoveMember(memberId: string) {
+    if (!activeChatId || !canManageMembers) {
+      return;
+    }
+
+    setChatMembersSaving(true);
+    setError(null);
+    try {
+      const payload = await removeChatMember(activeChatId, memberId);
+      setChatMembers(payload);
+      syncChatMemberCount(activeChatId, payload.members.length);
+      showNotice('Участник удален');
+    } catch (rawError) {
+      setError(rawError instanceof Error ? rawError.message : 'Ошибка удаления участника');
+    } finally {
+      setChatMembersSaving(false);
     }
   }
 
@@ -2268,24 +2427,6 @@ export default function ChatsPage() {
     persistAliases(nextAliases);
   }
 
-  async function onSaveProfile() {
-    setProfileSaving(true);
-    setError(null);
-    try {
-      const updated = await updateMe({
-        displayName: profileDisplayName.trim() || undefined,
-        bio: profileBio.trim() || undefined,
-        avatarUrl: profileAvatarUrl.trim() || undefined,
-      });
-      setMe(updated);
-      setProfileOpen(false);
-    } catch (rawError) {
-      setError(rawError instanceof Error ? rawError.message : 'Ошибка обновления профиля');
-    } finally {
-      setProfileSaving(false);
-    }
-  }
-
   function onSelectChat(chatId: string) {
     setActiveChatId(chatId);
   }
@@ -2302,6 +2443,8 @@ export default function ChatsPage() {
     setSearchExecuted(false);
     setHighlightedMessageId(null);
     setContextMenu(null);
+    setChatMembers(null);
+    setMemberUsernameInput('');
   }
 
   function buildTargetLabel(target: BuildTarget) {
@@ -2553,7 +2696,7 @@ export default function ChatsPage() {
           </div>
           <div className="sidebar-header-actions">
             <button
-              onClick={() => setProfileOpen(true)}
+              onClick={() => router.push('/profile')}
               type="button"
               className="sidebar-logout"
             >
@@ -2620,6 +2763,47 @@ export default function ChatsPage() {
             {creatingChat ? '...' : 'Создать'}
           </button>
         </form>
+
+        <form onSubmit={onSearchPublicChannels} className="public-channel-form">
+          <input
+            value={publicChannelQuery}
+            onChange={(event) => setPublicChannelQuery(event.target.value)}
+            placeholder="Поиск публичных каналов: @username"
+          />
+          <button type="submit" disabled={publicChannelSearching}>
+            {publicChannelSearching ? '...' : 'Найти каналы'}
+          </button>
+        </form>
+
+        {publicChannelResults.length > 0 ? (
+          <section className="public-channel-results">
+            {publicChannelResults.map((channel) => (
+              <div key={channel.id} className="public-channel-item">
+                <div>
+                  <strong>{channel.title || `@${channel.username ?? ''}`}</strong>
+                  {channel.username ? <small>@{channel.username}</small> : null}
+                  <span>{channel.memberCount} участников</span>
+                </div>
+                <button
+                  type="button"
+                  className="link-button"
+                  disabled={
+                    !channel.username ||
+                    channel.joined ||
+                    joiningPublicChannelUsername === channel.username
+                  }
+                  onClick={() => void onJoinPublicChannel(channel.username ?? '')}
+                >
+                  {channel.joined
+                    ? 'В канале'
+                    : joiningPublicChannelUsername === channel.username
+                      ? 'Вступление...'
+                      : 'Вступить'}
+                </button>
+              </div>
+            ))}
+          </section>
+        ) : null}
 
         {me?.role === 'ADMIN' ? (
           <section className="admin-builds-panel">
@@ -2912,6 +3096,60 @@ export default function ChatsPage() {
                     ))}
                   </div>
                 )}
+              </section>
+            ) : null}
+
+            {showMembersPanel ? (
+              <section className="members-panel">
+                <div className="members-panel-head">
+                  <strong>Участники</strong>
+                  <span>{activeChat?.memberCount ?? 0}</span>
+                </div>
+
+                {chatMembersLoading ? (
+                  <p className="muted">Загрузка участников...</p>
+                ) : chatMembers ? (
+                  <div className="members-list">
+                    {chatMembers.members.map((member) => (
+                      <div key={member.id} className="member-item">
+                        <div>
+                          <strong>
+                            {resolveAlias(member.id, member.displayName || member.username)}
+                          </strong>
+                          <small>@{member.username}</small>
+                        </div>
+                        <div className="member-item-actions">
+                          {member.isOwner ? <span className="muted">owner</span> : null}
+                          {canManageMembers && !member.isOwner ? (
+                            <button
+                              type="button"
+                              className="link-button danger-link"
+                              onClick={() => void onRemoveMember(member.id)}
+                              disabled={chatMembersSaving}
+                            >
+                              Удалить
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted">Список участников недоступен</p>
+                )}
+
+                {canManageMembers ? (
+                  <form className="members-manage-form" onSubmit={onAddMember}>
+                    <input
+                      value={memberUsernameInput}
+                      onChange={(event) => setMemberUsernameInput(event.target.value)}
+                      placeholder="Добавить по логину"
+                    />
+                    <button type="submit" disabled={chatMembersSaving || !memberUsernameInput.trim()}>
+                      {chatMembersSaving ? '...' : 'Добавить'}
+                    </button>
+                  </form>
+                ) : null}
               </section>
             ) : null}
 
@@ -3350,70 +3588,6 @@ export default function ChatsPage() {
         )}
       </section>
 
-      {profileOpen ? (
-        <div className="profile-modal-backdrop" onClick={() => setProfileOpen(false)}>
-          <section
-            className="profile-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3>Профиль</h3>
-            <label>
-              Имя
-              <input
-                value={profileDisplayName}
-                onChange={(event) => setProfileDisplayName(event.target.value)}
-                placeholder={me?.username || 'Имя'}
-              />
-            </label>
-            <label>
-              BIO
-              <input
-                value={profileBio}
-                onChange={(event) => setProfileBio(event.target.value)}
-                placeholder="Коротко о себе"
-              />
-            </label>
-            <label>
-              Ссылка на аватар
-              <input
-                value={profileAvatarUrl}
-                onChange={(event) => setProfileAvatarUrl(event.target.value)}
-                placeholder="https://..."
-              />
-            </label>
-            <label>
-              Тема
-              <select
-                value={themeMode}
-                onChange={(event) =>
-                  setThemeMode(event.target.value as 'light' | 'dark' | 'navy')
-                }
-              >
-                <option value="light">Светлая</option>
-                <option value="dark">Тёмная</option>
-                <option value="navy">Midnight</option>
-              </select>
-            </label>
-            <div className="profile-modal-actions">
-              <button
-                type="button"
-                onClick={() => void onSaveProfile()}
-                disabled={profileSaving}
-              >
-                {profileSaving ? 'Сохранение...' : 'Сохранить'}
-              </button>
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => setProfileOpen(false)}
-              >
-                Закрыть
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
       {notice ? (
         <p className={`floating-notice ${error ? 'with-error' : ''}`}>{notice}</p>
       ) : null}
@@ -3421,6 +3595,3 @@ export default function ChatsPage() {
     </main>
   );
 }
-
-
-
