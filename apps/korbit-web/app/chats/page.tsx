@@ -88,6 +88,7 @@ export default function ChatsPage() {
   const callToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnlockedRef = useRef(false);
+  const mediaPermissionPrefetchedRef = useRef(false);
   const messageToneAudioRef = useRef<HTMLAudioElement | null>(null);
   const callToneAudioRef = useRef<HTMLAudioElement | null>(null);
   const chatsRef = useRef<ChatItem[]>([]);
@@ -157,6 +158,7 @@ export default function ChatsPage() {
   const [screenSharing, setScreenSharing] = useState(false);
   const [callInfo, setCallInfo] = useState<string | null>(null);
   const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
@@ -207,6 +209,8 @@ export default function ChatsPage() {
     }
     return read;
   }, [activeChat, me, messages, peerReadCutoffIndex]);
+  const showSidebarPanel = !isMobileLayout || !activeChatId;
+  const showChatPanel = !isMobileLayout || Boolean(activeChatId);
 
   function canUseMediaDevices() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -400,6 +404,21 @@ export default function ChatsPage() {
   }, [totalUnreadCount]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const update = () => {
+      setIsMobileLayout(window.innerWidth <= 900);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isAuthenticated()) {
       router.replace('/login');
       return;
@@ -410,9 +429,6 @@ export default function ChatsPage() {
         const [profile, chatList] = await Promise.all([getMe(), listChats()]);
         setMe(profile);
         setChats(chatList);
-        if (chatList.length > 0) {
-          setActiveChatId(chatList[0].id);
-        }
       } catch (rawError) {
         if (rawError instanceof ApiError && rawError.status === 401) {
           await logout();
@@ -540,6 +556,28 @@ export default function ChatsPage() {
       void Notification.requestPermission().catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isMobileLayout || mediaPermissionPrefetchedRef.current) {
+      return;
+    }
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return;
+    }
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+    mediaPermissionPrefetchedRef.current = true;
+    void navigator.mediaDevices
+      .getUserMedia({
+        audio: true,
+        video: true,
+      })
+      .then((stream) => {
+        stream.getTracks().forEach((track) => track.stop());
+      })
+      .catch(() => undefined);
+  }, [isMobileLayout]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof Audio === 'undefined') {
@@ -1997,6 +2035,24 @@ export default function ChatsPage() {
     return role === 'ADMIN' ? 'админ' : 'пользователь';
   }
 
+  function onSelectChat(chatId: string) {
+    setActiveChatId(chatId);
+  }
+
+  function onBackToChatList() {
+    setActiveChatId(null);
+    setMessages([]);
+    setTypingUsers([]);
+    setReplyToMessage(null);
+    setForwardSourceMessage(null);
+    setEditingMessageId(null);
+    setSearchInput('');
+    setSearchResults([]);
+    setSearchExecuted(false);
+    setHighlightedMessageId(null);
+    setContextMenu(null);
+  }
+
   function buildTargetLabel(target: BuildTarget) {
     return target === 'windows' ? 'Windows' : 'Android';
   }
@@ -2166,13 +2222,29 @@ export default function ChatsPage() {
 
           if (attachment.mimeType.startsWith('video/')) {
             const isVideoNote = attachment.fileName.startsWith('video-note-');
+            if (isVideoNote) {
+              return (
+                <div key={attachment.id} className="attachment-media">
+                  <div className="video-note-wrap">
+                    <video
+                      controls
+                      preload="metadata"
+                      playsInline
+                      src={attachment.url}
+                      className="video-note-player"
+                    />
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={attachment.id} className="attachment-media">
                 <video
                   controls
                   preload="metadata"
+                  playsInline
                   src={attachment.url}
-                  className={isVideoNote ? 'video-note-player' : 'video-player'}
+                  className="video-player"
                 />
               </div>
             );
@@ -2200,8 +2272,8 @@ export default function ChatsPage() {
   }
 
   return (
-    <main className="chat-shell">
-      <aside className="chat-sidebar">
+    <main className={`chat-shell ${isMobileLayout ? 'mobile-layout' : ''}`}>
+      <aside className={`chat-sidebar ${showSidebarPanel ? '' : 'mobile-hidden'}`}>
         <header className="sidebar-header">
           <div className="sidebar-brand">
             <div className="brand-logo">K</div>
@@ -2332,7 +2404,7 @@ export default function ChatsPage() {
             <button
               key={chat.id}
               className={`chat-item ${chat.id === activeChatId ? 'active' : ''}`}
-              onClick={() => setActiveChatId(chat.id)}
+              onClick={() => onSelectChat(chat.id)}
               type="button"
             >
               <div
@@ -2366,10 +2438,19 @@ export default function ChatsPage() {
         </div>
       </aside>
 
-      <section className="chat-main">
+      <section className={`chat-main ${showChatPanel ? '' : 'mobile-hidden'}`}>
         {activeChat ? (
           <>
             <header className="chat-main-header">
+              {isMobileLayout ? (
+                <button
+                  type="button"
+                  className="mobile-back-button"
+                  onClick={onBackToChatList}
+                >
+                  Чаты
+                </button>
+              ) : null}
               <div className="chat-peer-head">
                 <div
                   className="chat-peer-avatar"
@@ -2569,6 +2650,13 @@ export default function ChatsPage() {
                 const own = message.senderId === me?.id;
                 const deliveryLabel = messageDeliveryLabel(message);
                 const reactionsView = reactionSummary(message);
+                const isVideoNoteOnlyMessage =
+                  message.content.trim().length === 0 &&
+                  (message.attachments?.length ?? 0) === 1 &&
+                  Boolean(
+                    message.attachments?.[0]?.mimeType.startsWith('video/') &&
+                      message.attachments?.[0]?.fileName.startsWith('video-note-'),
+                  );
                 return (
                   <article
                     key={message.id}
@@ -2577,6 +2665,8 @@ export default function ChatsPage() {
                     }}
                     onContextMenu={(event) => onMessageContextMenu(event, message.id)}
                     className={`message ${own ? 'own' : 'peer'} ${
+                      isVideoNoteOnlyMessage ? 'video-note-message' : ''
+                    } ${
                       highlightedMessageId === message.id ? 'highlighted-message' : ''
                     }`}
                   >
