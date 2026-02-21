@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
 import { access, mkdir, readdir, stat } from 'fs/promises';
 import { basename, isAbsolute, resolve, sep } from 'path';
 
@@ -165,6 +166,35 @@ export class AdminBuildsService {
     return rawOrigins.split(',')[0]?.trim() || 'http://localhost:3000';
   }
 
+  private resolveWorkspaceRoot() {
+    const configuredRoot = this.configService.get<string>('KORBIT_BUILD_ROOT');
+    if (configuredRoot?.trim()) {
+      return this.resolveFromProcessRoot(configuredRoot.trim());
+    }
+
+    let cursor = process.cwd();
+    while (true) {
+      if (
+        existsSync(resolve(cursor, 'pnpm-workspace.yaml')) &&
+        existsSync(resolve(cursor, 'scripts', 'release'))
+      ) {
+        return cursor;
+      }
+
+      const parent = resolve(cursor, '..');
+      if (parent === cursor) {
+        break;
+      }
+      cursor = parent;
+    }
+
+    return process.cwd();
+  }
+
+  private resolveFromProcessRoot(pathValue: string) {
+    return isAbsolute(pathValue) ? pathValue : resolve(process.cwd(), pathValue);
+  }
+
   private resolveScriptPath(target: BuildTarget) {
     const envKey =
       target === 'windows' ? 'BUILD_WINDOWS_SCRIPT' : 'BUILD_ANDROID_SCRIPT';
@@ -173,7 +203,29 @@ export class AdminBuildsService {
         ? 'scripts/release/build-windows.sh'
         : 'scripts/release/build-android.sh';
     const configured = this.configService.get<string>(envKey, defaultPath);
-    return isAbsolute(configured) ? configured : resolve(process.cwd(), configured);
+    return isAbsolute(configured)
+      ? configured
+      : resolve(this.resolveWorkspaceRoot(), configured);
+  }
+
+  private resolveArtifactPathFromLogs(rawPath: string, releaseDir: string) {
+    if (isAbsolute(rawPath)) {
+      return rawPath;
+    }
+
+    const candidates = [
+      resolve(releaseDir, rawPath),
+      resolve(process.cwd(), rawPath),
+      resolve(this.resolveWorkspaceRoot(), rawPath),
+    ];
+
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return candidates[0];
   }
 
   private toArtifactUrl(fileName: string) {
@@ -279,9 +331,10 @@ export class AdminBuildsService {
     let artifactPathFromLogs: string | null = null;
     let stdoutBuffer = '';
     let stderrBuffer = '';
+    const buildCwd = this.resolveWorkspaceRoot();
 
     const buildProcess = spawn('sh', [scriptPath], {
-      cwd: process.cwd(),
+      cwd: buildCwd,
       env: {
         ...process.env,
         KORBIT_BUILD_OUTPUT_DIR: releaseDir,
@@ -353,9 +406,7 @@ export class AdminBuildsService {
     }
 
     let resolvedArtifactPath: string | null = artifactPathFromLogs
-      ? (isAbsolute(artifactPathFromLogs)
-          ? artifactPathFromLogs
-          : resolve(process.cwd(), artifactPathFromLogs))
+      ? this.resolveArtifactPathFromLogs(artifactPathFromLogs, releaseDir)
       : null;
 
     if (!resolvedArtifactPath) {
