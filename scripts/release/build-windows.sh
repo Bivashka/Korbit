@@ -46,11 +46,11 @@ if command -v docker >/dev/null 2>&1; then
     -v "${ROOT_DIR}:/project" \
     -w /project \
     electronuserland/builder:wine \
-    /bin/bash -lc "corepack enable && corepack pnpm install --filter @korbit/korbit-desktop... --no-frozen-lockfile && corepack pnpm --filter @korbit/korbit-desktop run build:win"
+    /bin/bash -lc "corepack enable && corepack pnpm install --filter @korbit/korbit-desktop... --prod=false --no-frozen-lockfile && corepack pnpm --filter @korbit/korbit-desktop run build:win"
 else
   export KORBIT_APP_URL="${APP_URL}"
   cd "${ROOT_DIR}"
-  corepack pnpm install --filter @korbit/korbit-desktop... --no-frozen-lockfile
+  corepack pnpm install --filter @korbit/korbit-desktop... --prod=false --no-frozen-lockfile
   corepack pnpm --filter @korbit/korbit-desktop run build:win
 fi
 

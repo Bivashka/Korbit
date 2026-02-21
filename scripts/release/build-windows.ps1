@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 Push-Location $repoRoot
 try {
   $env:KORBIT_APP_URL = $appUrl
-  corepack pnpm install --filter @korbit/korbit-desktop... --no-frozen-lockfile
+  corepack pnpm install --filter @korbit/korbit-desktop... --prod=false --no-frozen-lockfile
   corepack pnpm --filter @korbit/korbit-desktop run build:win
 } finally {
   Pop-Location

@@ -42,7 +42,7 @@ if [[ ! -f "${MOBILE_DIR}/package.json" ]]; then
 fi
 
 cd "${ROOT_DIR}"
-corepack pnpm install --filter @korbit/korbit-mobile... --no-frozen-lockfile
+corepack pnpm install --filter @korbit/korbit-mobile... --prod=false --no-frozen-lockfile
 
 if [[ ! -d "${MOBILE_DIR}/android" ]]; then
   KORBIT_APP_URL="${APP_URL}" corepack pnpm --filter @korbit/korbit-mobile exec cap add android
