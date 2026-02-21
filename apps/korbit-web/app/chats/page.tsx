@@ -75,6 +75,8 @@ export default function ChatsPage() {
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioUnlockedRef = useRef(false);
+  const chatsRef = useRef<ChatItem[]>([]);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const cameraTrackBeforeShareRef = useRef<MediaStreamTrack | null>(null);
 
@@ -145,6 +147,40 @@ export default function ChatsPage() {
     contextMenuMessage &&
       (contextMenuMessage.senderId === me?.id || me?.role === 'ADMIN'),
   );
+  const totalUnreadCount = useMemo(
+    () => chats.reduce((total, chat) => total + Math.max(0, chat.unreadCount ?? 0), 0),
+    [chats],
+  );
+  const peerReadCutoffIndex = useMemo(() => {
+    if (!activeChat?.peerLastReadMessageId) {
+      return -1;
+    }
+    return messages.findIndex((item) => item.id === activeChat.peerLastReadMessageId);
+  }, [activeChat?.peerLastReadMessageId, messages]);
+  const ownUnreadForPeerCount = useMemo(() => {
+    if (!me || !activeChat || activeChat.type !== 'DIRECT') {
+      return 0;
+    }
+    return messages.reduce((count, item, index) => {
+      if (item.senderId !== me.id || item.isDeleted) {
+        return count;
+      }
+      return index > peerReadCutoffIndex ? count + 1 : count;
+    }, 0);
+  }, [activeChat, me, messages, peerReadCutoffIndex]);
+  const ownMessagesReadByPeer = useMemo(() => {
+    const read = new Set<string>();
+    if (!me || !activeChat || activeChat.type !== 'DIRECT' || peerReadCutoffIndex < 0) {
+      return read;
+    }
+    for (let index = 0; index <= peerReadCutoffIndex; index += 1) {
+      const message = messages[index];
+      if (message && message.senderId === me.id) {
+        read.add(message.id);
+      }
+    }
+    return read;
+  }, [activeChat, me, messages, peerReadCutoffIndex]);
 
   function canUseMediaDevices() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -197,6 +233,22 @@ export default function ChatsPage() {
     }
   }
 
+  function emitTone(context: AudioContext, kind: 'message' | 'call') {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+
+    oscillator.frequency.value = kind === 'call' ? 910 : 640;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + 0.24);
+  }
+
   function playTone(kind: 'message' | 'call') {
     if (typeof window === 'undefined') {
       return;
@@ -211,22 +263,16 @@ export default function ChatsPage() {
     audioContextRef.current = context;
 
     if (context.state === 'suspended') {
-      void context.resume().catch(() => undefined);
+      if (!audioUnlockedRef.current) {
+        return;
+      }
+      void context
+        .resume()
+        .then(() => emitTone(context, kind))
+        .catch(() => undefined);
+      return;
     }
-
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const now = context.currentTime;
-
-    oscillator.frequency.value = kind === 'call' ? 910 : 640;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
-
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + 0.24);
+    emitTone(context, kind);
   }
 
   function startCallTone() {
@@ -275,8 +321,19 @@ export default function ChatsPage() {
   }, [activeChatId]);
 
   useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
+
+  useEffect(() => {
     incomingCallRef.current = incomingCall;
   }, [incomingCall]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    document.title = totalUnreadCount > 0 ? `(${totalUnreadCount}) Korbit` : 'Korbit';
+  }, [totalUnreadCount]);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -360,6 +417,28 @@ export default function ChatsPage() {
     if (Notification.permission === 'default') {
       void Notification.requestPermission().catch(() => undefined);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const unlockAudio = () => {
+      audioUnlockedRef.current = true;
+      if (audioContextRef.current?.state === 'suspended') {
+        void audioContextRef.current.resume().catch(() => undefined);
+      }
+    };
+
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
   }, []);
 
   useEffect(() => {
@@ -580,6 +659,15 @@ export default function ChatsPage() {
           return [updated, ...rest];
         });
 
+        if (!isOwnMessage) {
+          playTone('message');
+          if (typeof document === 'undefined' || document.hidden || !isActiveChat) {
+            const peerName =
+              message.sender.displayName || message.sender.username || 'Новое сообщение';
+            showBrowserNotification(peerName, messageSnippet(message.content));
+          }
+        }
+
         if (isActiveChat) {
           setMessages((previous) => {
             const existingIndex = previous.findIndex((item) => item.id === message.id);
@@ -591,11 +679,6 @@ export default function ChatsPage() {
             return [...previous, message];
           });
           void markRead(message.chatId, message.id).catch(() => undefined);
-        } else if (!isOwnMessage) {
-          playTone('message');
-          const peerName =
-            message.sender.displayName || message.sender.username || 'Новое сообщение';
-          showBrowserNotification(peerName, messageSnippet(message.content));
         }
       },
     );
@@ -628,15 +711,19 @@ export default function ChatsPage() {
     socket.on(
       'read_receipt',
       (event: { chatId: string; userId: string; messageId: string | null }) => {
-        if (event.userId !== me?.id) {
-          return;
-        }
         setChats((previous) =>
-          previous.map((chat) =>
-            chat.id === event.chatId
-              ? { ...chat, lastReadMessageId: event.messageId, unreadCount: 0 }
-              : chat,
-          ),
+          previous.map((chat) => {
+            if (chat.id !== event.chatId) {
+              return chat;
+            }
+            if (event.userId === me?.id) {
+              return { ...chat, lastReadMessageId: event.messageId, unreadCount: 0 };
+            }
+            if (chat.peer?.id && event.userId === chat.peer.id) {
+              return { ...chat, peerLastReadMessageId: event.messageId };
+            }
+            return chat;
+          }),
         );
       },
     );
@@ -658,7 +745,7 @@ export default function ChatsPage() {
       startCallTone();
       setCallInfo('Входящий звонок');
 
-      const chat = chats.find((item) => item.id === event.chatId);
+      const chat = chatsRef.current.find((item) => item.id === event.chatId);
       const caller = chat?.peer?.displayName || chat?.peer?.username || 'Собеседник';
       const callLabel = event.type === 'video' ? 'Видеозвонок' : 'Аудиозвонок';
       showBrowserNotification(caller, callLabel);
@@ -1618,7 +1705,7 @@ export default function ChatsPage() {
 
   function formatSize(size: number) {
     if (size < 1024) {
-      return `${size} Р'`;
+      return `${size} Б`;
     }
     if (size < 1024 * 1024) {
       return `${(size / 1024).toFixed(1)} КБ`;
@@ -1654,7 +1741,7 @@ export default function ChatsPage() {
     if (attachment.mimeType.startsWith('audio/')) {
       return attachment.fileName.startsWith('voice-message-')
         ? 'Голосовое'
-        : 'РђСѓРґРёРѕ';
+        : 'Аудио';
     }
     if (attachment.mimeType.startsWith('video/')) {
       return attachment.fileName.startsWith('video-note-') ? 'Кружок' : 'Видео';
@@ -1690,6 +1777,16 @@ export default function ChatsPage() {
       return attachmentLabel(firstAttachment);
     }
     return messageSnippet(lastMessage.content);
+  }
+
+  function messageDeliveryLabel(message: MessageItem) {
+    if (message.senderId !== me?.id) {
+      return null;
+    }
+    if (!activeChat || activeChat.type !== 'DIRECT') {
+      return 'отправлено';
+    }
+    return ownMessagesReadByPeer.has(message.id) ? 'прочитано' : 'доставлено';
   }
 
   function reactionSummary(message: MessageItem) {
@@ -1785,7 +1882,12 @@ export default function ChatsPage() {
           <div className="sidebar-brand">
             <div className="brand-logo">K</div>
             <div className="brand-meta">
-              <h2>Korbit</h2>
+              <div className="brand-title-row">
+                <h2>Korbit</h2>
+                {totalUnreadCount > 0 ? (
+                  <span className="global-unread-badge">{totalUnreadCount}</span>
+                ) : null}
+              </div>
               {me ? (
                 <p className="muted">
                   {me.displayName || me.username} ({roleLabel(me.role)})
@@ -1868,6 +1970,17 @@ export default function ChatsPage() {
                   >
                     {formatStatus(activeChat.peer?.id)}
                   </span>
+                  {activeChat.type === 'DIRECT' ? (
+                    <span
+                      className={`peer-read-counter ${
+                        ownUnreadForPeerCount > 0 ? 'pending' : ''
+                      }`}
+                    >
+                      {ownUnreadForPeerCount > 0
+                        ? `Не прочитано у собеседника: ${ownUnreadForPeerCount}`
+                        : 'Все сообщения прочитаны'}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <form className="chat-search" onSubmit={onSearchInChat}>
@@ -1886,7 +1999,7 @@ export default function ChatsPage() {
                   onClick={() => onStartCall('audio')}
                   disabled={inCall || !canUseMediaDevices()}
                 >
-                  РђСѓРґРёРѕ
+                  Аудио
                 </button>
                 <button
                   type="button"
@@ -2029,6 +2142,7 @@ export default function ChatsPage() {
             <div className="messages">
               {messages.map((message) => {
                 const own = message.senderId === me?.id;
+                const deliveryLabel = messageDeliveryLabel(message);
                 const reactionsView = reactionSummary(message);
                 return (
                   <article
@@ -2090,7 +2204,7 @@ export default function ChatsPage() {
                     <small className="message-meta">
                       {message.editedAt ? 'edited ' : ''}
                       {formatShortTime(message.createdAt)}
-                      {own ? ' | read' : ''}
+                      {own && deliveryLabel ? ` | ${deliveryLabel}` : ''}
                     </small>
                   </article>
                 );

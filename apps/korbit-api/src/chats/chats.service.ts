@@ -131,11 +131,13 @@ export class ChatsService {
 
     return memberships.map((membership, index) => {
       const peer = membership.chat.members.find((m) => m.userId !== userId)?.user;
+      const peerMembership = membership.chat.members.find((m) => m.userId !== userId);
       return {
         id: membership.chat.id,
         type: membership.chat.type,
         peer,
         lastReadMessageId: membership.lastReadMessageId,
+        peerLastReadMessageId: peerMembership?.lastReadMessageId ?? null,
         lastMessage: membership.chat.messages[0] ?? null,
         pinnedMessage: membership.chat.pinnedMessage ?? null,
         unreadCount: unreadCounts[index] ?? 0,
@@ -791,6 +793,8 @@ export class ChatsService {
       type: chat.type,
       peer: chat.members.find((member) => member.userId !== userId)?.user ?? null,
       lastReadMessageId: ownMembership?.lastReadMessageId ?? null,
+      peerLastReadMessageId:
+        chat.members.find((member) => member.userId !== userId)?.lastReadMessageId ?? null,
       lastMessage: chat.messages[0] ?? null,
       pinnedMessage: chat.pinnedMessage ?? null,
       unreadCount: 0,

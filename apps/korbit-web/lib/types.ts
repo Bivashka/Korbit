@@ -60,6 +60,7 @@ export type ChatItem = {
   type: 'DIRECT' | 'GROUP' | 'CHANNEL';
   peer: ChatPeer | null;
   lastReadMessageId: string | null;
+  peerLastReadMessageId: string | null;
   lastMessage: MessageItem | null;
   pinnedMessage: MessageReference | null;
   unreadCount: number;
