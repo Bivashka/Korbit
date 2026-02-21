@@ -79,9 +79,11 @@ export default function ChatsPage() {
   const incomingCallRef = useRef<IncomingCall | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLElement | null>>({});
   const previousMessageCountRef = useRef(0);
   const previousScrollChatIdRef = useRef<string | null>(null);
+  const previousLatestMessageKeyRef = useRef('');
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -470,23 +472,37 @@ export default function ChatsPage() {
     if (!activeChatId) {
       previousMessageCountRef.current = 0;
       previousScrollChatIdRef.current = null;
+      previousLatestMessageKeyRef.current = '';
       return;
     }
 
+    const latestMessage = messages[messages.length - 1];
+    const latestMessageKey = latestMessage
+      ? `${latestMessage.id}:${latestMessage.updatedAt}`
+      : '';
     const chatChanged = previousScrollChatIdRef.current !== activeChatId;
     const hasNewMessages = messages.length > previousMessageCountRef.current;
-    if (messagesContainerRef.current && (chatChanged || hasNewMessages)) {
-      window.requestAnimationFrame(() => {
+    const latestChanged = latestMessageKey !== previousLatestMessageKeyRef.current;
+    if (messagesContainerRef.current && (chatChanged || hasNewMessages || latestChanged)) {
+      const scrollToBottom = () => {
         const container = messagesContainerRef.current;
         if (!container) {
           return;
         }
         container.scrollTop = container.scrollHeight;
+        messagesEndRef.current?.scrollIntoView({ block: 'end' });
+      };
+
+      window.requestAnimationFrame(() => {
+        scrollToBottom();
+        window.setTimeout(scrollToBottom, 0);
+        window.setTimeout(scrollToBottom, 80);
       });
     }
 
     previousScrollChatIdRef.current = activeChatId;
     previousMessageCountRef.current = messages.length;
+    previousLatestMessageKeyRef.current = latestMessageKey;
   }, [activeChatId, messages]);
 
   useEffect(() => {
@@ -2599,6 +2615,7 @@ export default function ChatsPage() {
                   </article>
                 );
               })}
+              <div ref={messagesEndRef} className="messages-end-anchor" aria-hidden />
             </div>
 
             {contextMenu && contextMenuMessage ? (
