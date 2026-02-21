@@ -11,8 +11,9 @@ New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 Push-Location $repoRoot
 try {
+  $env:CI = "1"
   $env:KORBIT_APP_URL = $appUrl
-  corepack pnpm install --filter @korbit/korbit-mobile... --prod=false --no-frozen-lockfile
+  corepack pnpm install --prod=false --no-frozen-lockfile --config.confirmModulesPurge=false
   if (-not (Test-Path (Join-Path $mobileDir "android"))) {
     corepack pnpm --filter @korbit/korbit-mobile exec cap add android
   }
