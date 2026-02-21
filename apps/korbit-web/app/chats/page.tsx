@@ -2296,6 +2296,12 @@ export default function ChatsPage() {
                       </a>
                     ) : null}
                     {item.lastError ? <small className="error">{item.lastError}</small> : null}
+                    {item.logTail.length > 0 ? (
+                      <details className="admin-build-log">
+                        <summary>Logs</summary>
+                        <pre>{item.logTail.slice(-12).join('\n')}</pre>
+                      </details>
+                    ) : null}
                   </div>
                 ))}
               </div>

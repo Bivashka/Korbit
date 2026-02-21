@@ -26,7 +26,7 @@ docker run --rm `
   -w /workspace/apps/korbit-mobile/android `
   -e GRADLE_USER_HOME=/workspace/.gradle `
   mingc/android-build-box:latest `
-  ./gradlew assembleDebug
+  /bin/bash -lc "chmod +x ./gradlew || true; bash ./gradlew assembleDebug"
 
 $sourceApk = Join-Path $mobileDir "android\app\build\outputs\apk\debug\app-debug.apk"
 if (-not (Test-Path $sourceApk)) {

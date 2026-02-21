@@ -42,6 +42,7 @@ const ALLOWED_ARTIFACT_EXTENSIONS = [
   '.tar.gz',
   '.tgz',
 ];
+const FALLBACK_WORKSPACE_ROOTS = ['/opt/korbit'];
 
 @Injectable()
 export class AdminBuildsService {
@@ -166,6 +167,13 @@ export class AdminBuildsService {
     return rawOrigins.split(',')[0]?.trim() || 'http://localhost:3000';
   }
 
+  private isWorkspaceRoot(pathValue: string) {
+    return (
+      existsSync(resolve(pathValue, 'pnpm-workspace.yaml')) &&
+      existsSync(resolve(pathValue, 'scripts', 'release'))
+    );
+  }
+
   private resolveWorkspaceRoot() {
     const configuredRoot = this.configService.get<string>('KORBIT_BUILD_ROOT');
     if (configuredRoot?.trim()) {
@@ -174,10 +182,7 @@ export class AdminBuildsService {
 
     let cursor = process.cwd();
     while (true) {
-      if (
-        existsSync(resolve(cursor, 'pnpm-workspace.yaml')) &&
-        existsSync(resolve(cursor, 'scripts', 'release'))
-      ) {
+      if (this.isWorkspaceRoot(cursor)) {
         return cursor;
       }
 
@@ -188,6 +193,12 @@ export class AdminBuildsService {
       cursor = parent;
     }
 
+    for (const candidate of FALLBACK_WORKSPACE_ROOTS) {
+      if (this.isWorkspaceRoot(candidate)) {
+        return candidate;
+      }
+    }
+
     return process.cwd();
   }
 
@@ -195,7 +206,10 @@ export class AdminBuildsService {
     return isAbsolute(pathValue) ? pathValue : resolve(process.cwd(), pathValue);
   }
 
-  private resolveScriptPath(target: BuildTarget) {
+  private resolveScriptPath(
+    target: BuildTarget,
+    workspaceRoot = this.resolveWorkspaceRoot(),
+  ) {
     const envKey =
       target === 'windows' ? 'BUILD_WINDOWS_SCRIPT' : 'BUILD_ANDROID_SCRIPT';
     const defaultPath =
@@ -203,9 +217,7 @@ export class AdminBuildsService {
         ? 'scripts/release/build-windows.sh'
         : 'scripts/release/build-android.sh';
     const configured = this.configService.get<string>(envKey, defaultPath);
-    return isAbsolute(configured)
-      ? configured
-      : resolve(this.resolveWorkspaceRoot(), configured);
+    return isAbsolute(configured) ? configured : resolve(workspaceRoot, configured);
   }
 
   private resolveArtifactPathFromLogs(rawPath: string, releaseDir: string) {
@@ -313,8 +325,9 @@ export class AdminBuildsService {
   private async runBuild(target: BuildTarget, runId: number) {
     const releaseDir = this.resolveReleaseDirectory();
     await mkdir(releaseDir, { recursive: true });
+    const buildCwd = this.resolveWorkspaceRoot();
 
-    const scriptPath = this.resolveScriptPath(target);
+    const scriptPath = this.resolveScriptPath(target, buildCwd);
     try {
       await access(scriptPath);
     } catch {
@@ -331,15 +344,24 @@ export class AdminBuildsService {
     let artifactPathFromLogs: string | null = null;
     let stdoutBuffer = '';
     let stderrBuffer = '';
-    const buildCwd = this.resolveWorkspaceRoot();
+    const shellCommand =
+      this.configService.get<string>('BUILD_SCRIPT_SHELL')?.trim() || 'bash';
+    let spawnError: string | null = null;
 
-    const buildProcess = spawn('sh', [scriptPath], {
+    this.appendLog(
+      target,
+      runId,
+      `[system] shell=${shellCommand} cwd=${buildCwd} script=${scriptPath}`,
+    );
+
+    const buildProcess = spawn(shellCommand, [scriptPath], {
       cwd: buildCwd,
       env: {
         ...process.env,
         KORBIT_BUILD_OUTPUT_DIR: releaseDir,
         KORBIT_BUILD_TARGET: target,
         KORBIT_PUBLIC_WEB_URL: this.resolvePublicWebUrl(),
+        KORBIT_BUILD_ROOT: buildCwd,
         KORBIT_BUILD_RUN_ID: String(runId),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -385,7 +407,11 @@ export class AdminBuildsService {
 
     const exitCode = await new Promise<number | null>((resolveExit) => {
       buildProcess.on('close', (code) => resolveExit(code));
-      buildProcess.on('error', () => resolveExit(-1));
+      buildProcess.on('error', (error) => {
+        spawnError = error instanceof Error ? error.message : String(error);
+        this.appendLog(target, runId, `[system] spawn error: ${spawnError}`);
+        resolveExit(-1);
+      });
     });
 
     if (stdoutBuffer) {
@@ -400,7 +426,9 @@ export class AdminBuildsService {
         ...current,
         status: 'failed',
         finishedAt: new Date().toISOString(),
-        lastError: `Build failed with exit code ${String(exitCode)}`,
+        lastError: spawnError
+          ? `Build failed: ${spawnError}`
+          : `Build failed with exit code ${String(exitCode)}`,
       }));
       return;
     }
