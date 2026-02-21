@@ -52,10 +52,14 @@ services:
       UPLOAD_DIR: uploads
       UPLOAD_PUBLIC_PREFIX: /api/uploads
       MAX_UPLOAD_SIZE: 10485760
+      KORBIT_PUBLIC_WEB_URL: ${CORS_ORIGIN}
+      KORBIT_BUILD_ROOT: ${KORBIT_BUILD_ROOT_CONTAINER:-/opt/korbit}
     ports:
       - '127.0.0.1:4000:4000'
     volumes:
       - korbit_uploads_data:/app/uploads
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${KORBIT_BUILD_ROOT_HOST:-/opt/korbit}:${KORBIT_BUILD_ROOT_CONTAINER:-/opt/korbit}
     healthcheck:
       test:
         [

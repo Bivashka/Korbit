@@ -1,6 +1,7 @@
 node_modules
 .pnpm-store
 .turbo
+.gradle
 .vscode
 dist
 coverage
@@ -16,3 +17,7 @@ coverage
 apps/korbit-api/prisma/dev.db
 apps/korbit-api/prisma/dev.db-journal
 apps/korbit-web/.next
+uploads/
+apps/korbit-api/uploads/
+apps/korbit-mobile/android/.gradle/
+apps/korbit-mobile/android/**/build/

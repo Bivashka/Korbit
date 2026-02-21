@@ -1,9 +1,10 @@
 # korbit-mobile
 
-Step 1 scaffold for React Native client.
+Capacitor Android shell for Korbit web app.
 
-Current status:
-- Login screen placeholder
-- Chat screen placeholder
-- Navigation and realtime integrations planned for next iterations
+Build APK:
 
+```powershell
+$env:KORBIT_APP_URL = "https://your-chat-domain"
+powershell -ExecutionPolicy Bypass -File ../../scripts/release/build-android.ps1
+```

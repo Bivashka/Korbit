@@ -83,3 +83,35 @@ export type AuthPayload = {
   refreshTokenTtl: number;
   user: UserProfile;
 };
+
+export type BuildTarget = 'windows' | 'android';
+export type BuildStatus = 'idle' | 'running' | 'success' | 'failed';
+
+export type AdminBuildState = {
+  target: BuildTarget;
+  status: BuildStatus;
+  runId: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  initiatedBy: string | null;
+  artifactName: string | null;
+  artifactSize: number | null;
+  artifactCreatedAt: string | null;
+  artifactUrl: string | null;
+  lastError: string | null;
+  logTail: string[];
+};
+
+export type AdminBuildArtifact = {
+  name: string;
+  size: number;
+  createdAt: string;
+  url: string;
+  target: BuildTarget | 'unknown';
+};
+
+export type AdminBuildsResponse = {
+  builds: AdminBuildState[];
+  artifacts: AdminBuildArtifact[];
+  targets: BuildTarget[];
+};

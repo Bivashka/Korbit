@@ -11,6 +11,7 @@ import {
   getMe,
   getSocketConfig,
   isAuthenticated,
+  listAdminBuilds,
   listChats,
   listMessages,
   logout,
@@ -19,12 +20,16 @@ import {
   searchMessages,
   sendMessage,
   toggleReaction,
+  triggerAdminBuild,
   unpinMessage,
   updateMessage,
   uploadAttachment,
 } from '../../lib/api';
 import { getAccessToken } from '../../lib/session';
 import {
+  AdminBuildArtifact,
+  AdminBuildState,
+  BuildTarget,
   AttachmentItem,
   ChatItem,
   MessageItem,
@@ -73,7 +78,10 @@ export default function ChatsPage() {
   const activeChatIdRef = useRef<string | null>(null);
   const incomingCallRef = useRef<IncomingCall | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messageElementsRef = useRef<Record<string, HTMLElement | null>>({});
+  const previousMessageCountRef = useRef(0);
+  const previousScrollChatIdRef = useRef<string | null>(null);
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -129,6 +137,15 @@ export default function ChatsPage() {
     x: number;
     y: number;
   } | null>(null);
+  const [adminBuilds, setAdminBuilds] = useState<{
+    builds: AdminBuildState[];
+    artifacts: AdminBuildArtifact[];
+  }>({ builds: [], artifacts: [] });
+  const [adminBuildsLoading, setAdminBuildsLoading] = useState(false);
+  const [adminBuildTriggering, setAdminBuildTriggering] = useState<BuildTarget | null>(
+    null,
+  );
+  const [adminBuildsError, setAdminBuildsError] = useState<string | null>(null);
 
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [callType, setCallType] = useState<CallType | null>(null);
@@ -448,6 +465,29 @@ export default function ChatsPage() {
     setHighlightedMessageId(null);
     setContextMenu(null);
   }, [activeChatId]);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      previousMessageCountRef.current = 0;
+      previousScrollChatIdRef.current = null;
+      return;
+    }
+
+    const chatChanged = previousScrollChatIdRef.current !== activeChatId;
+    const hasNewMessages = messages.length > previousMessageCountRef.current;
+    if (messagesContainerRef.current && (chatChanged || hasNewMessages)) {
+      window.requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (!container) {
+          return;
+        }
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+
+    previousScrollChatIdRef.current = activeChatId;
+    previousMessageCountRef.current = messages.length;
+  }, [activeChatId, messages]);
 
   useEffect(() => {
     if (inCall) {
@@ -990,6 +1030,79 @@ export default function ChatsPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (me?.role !== 'ADMIN') {
+      setAdminBuilds({ builds: [], artifacts: [] });
+      setAdminBuildsError(null);
+      return;
+    }
+    void loadAdminBuilds();
+  }, [me?.role]);
+
+  useEffect(() => {
+    if (me?.role !== 'ADMIN') {
+      return;
+    }
+    if (!adminBuilds.builds.some((item) => item.status === 'running')) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadAdminBuilds();
+    }, 4500);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [adminBuilds.builds, me?.role]);
+
+  async function loadAdminBuilds(showError = false) {
+    if (me?.role !== 'ADMIN') {
+      return;
+    }
+    setAdminBuildsLoading(true);
+    try {
+      const payload = await listAdminBuilds();
+      setAdminBuilds({
+        builds: payload.builds ?? [],
+        artifacts: payload.artifacts ?? [],
+      });
+      setAdminBuildsError(null);
+    } catch (rawError) {
+      if (showError) {
+        setAdminBuildsError(
+          rawError instanceof Error ? rawError.message : 'Не удалось обновить сборки',
+        );
+      }
+    } finally {
+      setAdminBuildsLoading(false);
+    }
+  }
+
+  async function onTriggerAdminBuild(target: BuildTarget) {
+    if (me?.role !== 'ADMIN') {
+      return;
+    }
+    setAdminBuildTriggering(target);
+    setAdminBuildsError(null);
+    try {
+      const state = await triggerAdminBuild(target);
+      setAdminBuilds((previous) => {
+        const nextBuilds = previous.builds.filter((item) => item.target !== state.target);
+        nextBuilds.push(state);
+        return {
+          ...previous,
+          builds: nextBuilds,
+        };
+      });
+      await loadAdminBuilds();
+    } catch (rawError) {
+      setAdminBuildsError(
+        rawError instanceof Error ? rawError.message : 'Не удалось запустить сборку',
+      );
+    } finally {
+      setAdminBuildTriggering(null);
+    }
+  }
 
   async function onCreateChat(event: FormEvent) {
     event.preventDefault();
@@ -1855,6 +1968,36 @@ export default function ChatsPage() {
     return role === 'ADMIN' ? 'админ' : 'пользователь';
   }
 
+  function buildTargetLabel(target: BuildTarget) {
+    return target === 'windows' ? 'Windows' : 'Android';
+  }
+
+  function buildStatusLabel(status: AdminBuildState['status']) {
+    if (status === 'running') {
+      return 'собирается';
+    }
+    if (status === 'success') {
+      return 'готово';
+    }
+    if (status === 'failed') {
+      return 'ошибка';
+    }
+    return 'ожидание';
+  }
+
+  function formatDateTime(value: string | null) {
+    if (!value) {
+      return '';
+    }
+    const date = new Date(value);
+    return date.toLocaleString([], {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
   function formatSize(size: number) {
     if (size < 1024) {
       return `${size} Б`;
@@ -2062,6 +2205,92 @@ export default function ChatsPage() {
             {creatingChat ? '...' : 'Старт'}
           </button>
         </form>
+
+        {me?.role === 'ADMIN' ? (
+          <section className="admin-builds-panel">
+            <div className="admin-builds-header">
+              <strong>Builds</strong>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => void loadAdminBuilds(true)}
+                disabled={adminBuildsLoading}
+              >
+                {adminBuildsLoading ? '...' : 'Обновить'}
+              </button>
+            </div>
+            <p className="muted">
+              Сборка пакетов Windows/Android на VPS и ссылки на скачивание.
+            </p>
+            <div className="admin-builds-actions">
+              <button
+                type="button"
+                onClick={() => void onTriggerAdminBuild('windows')}
+                disabled={Boolean(adminBuildTriggering)}
+              >
+                {adminBuildTriggering === 'windows' ? 'Сборка...' : 'Build Windows'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void onTriggerAdminBuild('android')}
+                disabled={Boolean(adminBuildTriggering)}
+              >
+                {adminBuildTriggering === 'android' ? 'Сборка...' : 'Build Android'}
+              </button>
+            </div>
+
+            {adminBuildsError ? <p className="error">{adminBuildsError}</p> : null}
+
+            {adminBuilds.builds.length > 0 ? (
+              <div className="admin-builds-status-list">
+                {adminBuilds.builds.map((item) => (
+                  <div key={item.target} className="admin-builds-status-item">
+                    <div className="admin-builds-status-head">
+                      <strong>{buildTargetLabel(item.target)}</strong>
+                      <span>{buildStatusLabel(item.status)}</span>
+                    </div>
+                    <small className="muted">
+                      {item.finishedAt
+                        ? `Последний запуск: ${formatDateTime(item.finishedAt)}`
+                        : item.startedAt
+                          ? `Запущено: ${formatDateTime(item.startedAt)}`
+                          : 'Сборка еще не запускалась'}
+                    </small>
+                    {item.artifactUrl ? (
+                      <a
+                        href={item.artifactUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="admin-build-download-link"
+                      >
+                        Скачать {item.artifactName}
+                      </a>
+                    ) : null}
+                    {item.lastError ? <small className="error">{item.lastError}</small> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {adminBuilds.artifacts.length > 0 ? (
+              <div className="admin-builds-files">
+                {adminBuilds.artifacts.slice(0, 6).map((artifact) => (
+                  <a
+                    key={artifact.name}
+                    href={artifact.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="admin-build-download-link"
+                  >
+                    {artifact.name}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <small className="muted">Артефактов пока нет</small>
+            )}
+          </section>
+        ) : null}
 
         <div className="chat-list">
           {chats.map((chat) => (
@@ -2300,7 +2529,7 @@ export default function ChatsPage() {
               </section>
             )}
 
-            <div className="messages">
+            <div ref={messagesContainerRef} className="messages">
               {messages.map((message) => {
                 const own = message.senderId === me?.id;
                 const deliveryLabel = messageDeliveryLabel(message);

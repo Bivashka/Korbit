@@ -11,6 +11,7 @@ Step 1 implementation includes:
 See full architecture, API contract, data model and runbook:
 - `docs/step1-architecture.md`
 - `docs/vps-install.md`
+- `docs/client-builds.md`
 
 ## One-Click VPS Deploy
 

@@ -2,11 +2,39 @@
   "name": "@korbit/korbit-desktop",
   "version": "0.1.0",
   "private": true,
+  "main": "src/main.js",
   "scripts": {
-    "dev": "echo \"Korbit desktop scaffold. Electron integration in Step 2.\"",
-    "build": "echo \"Korbit desktop scaffold build placeholder\"",
+    "dev": "electron .",
+    "build": "pnpm run build:win",
+    "build:win": "electron-builder --win portable --x64",
     "lint": "echo \"No lint yet\"",
     "typecheck": "echo \"No typecheck yet\""
+  },
+  "devDependencies": {
+    "electron": "^35.3.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.korbit.desktop",
+    "productName": "Korbit Desktop",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "korbit-desktop-${version}-${arch}.${ext}"
+    }
   }
 }
-

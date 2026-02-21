@@ -1,9 +1,10 @@
 # korbit-desktop
 
-Step 1 scaffold for Electron desktop client.
+Electron desktop shell for Korbit web app.
 
-Current status:
-- Login view placeholder
-- Chat view placeholder
-- Packaging pipeline will be added in later steps
+Build EXE:
 
+```powershell
+$env:KORBIT_APP_URL = "https://your-chat-domain"
+powershell -ExecutionPolicy Bypass -File ../../scripts/release/build-windows.ps1
+```

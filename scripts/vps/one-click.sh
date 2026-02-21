@@ -261,6 +261,8 @@ configure_env_file() {
   set_env_var "CORS_ORIGIN" "${scheme}://${HOST}" "${env_file}"
   set_env_var "NEXT_PUBLIC_API_URL" "/api" "${env_file}"
   set_env_var "NEXT_PUBLIC_REGISTRATION_MODE" "${REGISTRATION_MODE}" "${env_file}"
+  set_env_var "KORBIT_BUILD_ROOT_HOST" "${INSTALL_DIR}" "${env_file}"
+  set_env_var "KORBIT_BUILD_ROOT_CONTAINER" "${INSTALL_DIR}" "${env_file}"
 }
 
 setup_firewall() {

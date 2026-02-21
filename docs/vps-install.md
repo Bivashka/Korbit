@@ -41,6 +41,8 @@ Optional variables:
 - `KORBIT_IP_SSL_DOMAIN` (default `traefik.me`, preferred zone when SSL is enabled and host is IP)
 - `KORBIT_IP_SSL_DOMAIN_FALLBACKS` (default `traefik.me,nip.io,sslip.io`)
 - `KORBIT_ENABLE_TUNNEL_ON_HTTP_FALLBACK` (default `true`)
+- `KORBIT_BUILD_ROOT_HOST` (default `/opt/korbit`, host path for build workspace)
+- `KORBIT_BUILD_ROOT_CONTAINER` (default `/opt/korbit`, same path mounted into api container)
 
 If you only have an IP and no domain:
 
@@ -90,3 +92,22 @@ cd /opt/korbit
 docker compose --env-file .env.vps -f docker-compose.vps.yml logs -f api
 docker compose --env-file .env.vps -f docker-compose.vps.yml logs -f web
 ```
+
+## Client Builds (admin account)
+
+After login as admin in the web app, sidebar has a `Builds` block:
+- `Build Windows`
+- `Build Android`
+
+Generated files are available for download in the same block.
+
+Manual build (VPS shell):
+
+```bash
+cd /opt/korbit
+docker compose --env-file .env.vps -f docker-compose.vps.yml exec api sh scripts/release/build-windows.sh
+docker compose --env-file .env.vps -f docker-compose.vps.yml exec api sh scripts/release/build-android.sh
+```
+
+Detailed notes:
+- `docs/client-builds.md`

@@ -3,10 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "echo \"Korbit mobile scaffold. Integrate Expo in Step 2.\"",
-    "build": "echo \"Korbit mobile scaffold build placeholder\"",
+    "dev": "echo \"Use Android Studio or scripts/release/build-android.sh for APK build\"",
+    "android:add": "cap add android",
+    "android:sync": "cap sync android",
+    "build": "echo \"Use scripts/release/build-android.sh\"",
+    "build:apk": "echo \"Use scripts/release/build-android.sh\"",
     "lint": "echo \"No lint yet\"",
     "typecheck": "echo \"No typecheck yet\""
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0"
   }
 }
-

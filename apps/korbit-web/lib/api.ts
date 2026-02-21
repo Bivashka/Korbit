@@ -1,6 +1,9 @@
 import {
+  AdminBuildState,
+  AdminBuildsResponse,
   AttachmentItem,
   AuthPayload,
+  BuildTarget,
   ChatItem,
   MessageItem,
   MessageReference,
@@ -314,6 +317,17 @@ export async function createInvite(params: {
   return request('/invites', {
     method: 'POST',
     body: params,
+  });
+}
+
+export async function listAdminBuilds() {
+  return request<AdminBuildsResponse>('/admin/builds');
+}
+
+export async function triggerAdminBuild(target: BuildTarget) {
+  return request<AdminBuildState>(`/admin/builds/${target}`, {
+    method: 'POST',
+    body: {},
   });
 }
 

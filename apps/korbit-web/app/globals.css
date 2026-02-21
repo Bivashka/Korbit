@@ -227,6 +227,77 @@ button:disabled {
   padding: 0 0.24rem;
 }
 
+.admin-builds-panel {
+  margin: 0.58rem 0.24rem 0.2rem;
+  padding: 0.56rem 0.62rem;
+  border: 1px solid #cad8e7;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.admin-builds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.admin-builds-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.admin-builds-actions button {
+  border-radius: 10px;
+  font-size: 0.78rem;
+  padding: 0.36rem 0.4rem;
+}
+
+.admin-builds-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+
+.admin-builds-status-item {
+  border: 1px solid #d4deeb;
+  border-radius: 10px;
+  background: rgba(250, 252, 255, 0.92);
+  padding: 0.38rem 0.44rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+}
+
+.admin-builds-status-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.admin-builds-files {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.admin-build-download-link {
+  color: #2363ac;
+  text-decoration: none;
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
+.admin-build-download-link:hover {
+  text-decoration: underline;
+}
+
 .chat-list {
   overflow: auto;
   min-height: 0;
