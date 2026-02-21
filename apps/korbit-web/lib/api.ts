@@ -50,11 +50,17 @@ async function refreshTokens() {
     return false;
   }
 
-  const response = await fetch(`${API_URL}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch {
+    clearTokens();
+    return false;
+  }
 
   if (!response.ok) {
     clearTokens();
@@ -86,11 +92,20 @@ export async function request<T>(
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: hasBody ? JSON.stringify(options.body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+      body: hasBody ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (error) {
+    throw new ApiError(
+      `Нет подключения к API (${API_URL})`,
+      0,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 
   if (response.status === 401 && withAuth && retry) {
     const refreshed = await refreshTokens();

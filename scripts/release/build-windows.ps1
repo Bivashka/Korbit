@@ -5,8 +5,10 @@ $outputDir = if ($env:KORBIT_BUILD_OUTPUT_DIR) { $env:KORBIT_BUILD_OUTPUT_DIR } 
 $appUrl = if ($env:KORBIT_APP_URL) { $env:KORBIT_APP_URL } elseif ($env:KORBIT_PUBLIC_WEB_URL) { $env:KORBIT_PUBLIC_WEB_URL } else { "http://localhost:3000" }
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $targetPath = Join-Path $outputDir ("korbit-windows-{0}.exe" -f $stamp)
+$runtimeUrlPath = Join-Path $repoRoot "apps\korbit-desktop\src\runtime-url.txt"
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+Set-Content -Path $runtimeUrlPath -Value $appUrl -Encoding UTF8
 
 Push-Location $repoRoot
 try {

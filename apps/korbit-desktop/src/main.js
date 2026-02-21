@@ -3,31 +3,78 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_URL = 'http://localhost:3000';
+const BUNDLED_URL_FILE = 'runtime-url.txt';
+
+function normalizeUrl(raw) {
+  const value = raw?.trim();
+  if (!value) {
+    return null;
+  }
+  if (!/^https?:\/\//i.test(value)) {
+    return null;
+  }
+  return value;
+}
+
+function readTextFileIfExists(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    return fs.readFileSync(filePath, 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
+function readBundledUrl() {
+  const localBundled = normalizeUrl(
+    readTextFileIfExists(path.join(__dirname, BUNDLED_URL_FILE)),
+  );
+  if (localBundled) {
+    return localBundled;
+  }
+
+  const appPathBundled = normalizeUrl(
+    readTextFileIfExists(path.join(app.getAppPath(), 'src', BUNDLED_URL_FILE)),
+  );
+  if (appPathBundled) {
+    return appPathBundled;
+  }
+
+  return null;
+}
 
 function readConfiguredUrl() {
-  const envUrl = process.env.KORBIT_APP_URL?.trim();
+  const envUrl = normalizeUrl(process.env.KORBIT_APP_URL);
   if (envUrl) {
     return envUrl;
   }
 
-  const argUrl = process.argv
+  const argUrl = normalizeUrl(
+    process.argv
     .find((argument) => argument.startsWith('--url='))
     ?.slice('--url='.length)
-    .trim();
+    .trim(),
+  );
   if (argUrl) {
     return argUrl;
   }
 
-  try {
-    const filePath = path.join(process.cwd(), 'korbit-desktop-url.txt');
-    if (fs.existsSync(filePath)) {
-      const fileValue = fs.readFileSync(filePath, 'utf8').trim();
-      if (fileValue) {
-        return fileValue;
-      }
+  const fileCandidates = [
+    path.join(path.dirname(process.execPath), 'korbit-desktop-url.txt'),
+    path.join(process.cwd(), 'korbit-desktop-url.txt'),
+  ];
+  for (const candidate of fileCandidates) {
+    const fileUrl = normalizeUrl(readTextFileIfExists(candidate));
+    if (fileUrl) {
+      return fileUrl;
     }
-  } catch {
-    // ignore local file read issues
+  }
+
+  const bundledUrl = readBundledUrl();
+  if (bundledUrl) {
+    return bundledUrl;
   }
 
   return DEFAULT_URL;
@@ -82,4 +129,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-

@@ -27,6 +27,7 @@ OUTPUT_DIR="${KORBIT_BUILD_OUTPUT_DIR:-${ROOT_DIR}/uploads/releases}"
 APP_URL="${KORBIT_APP_URL:-${KORBIT_PUBLIC_WEB_URL:-http://localhost:3000}}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 TARGET_PATH="${OUTPUT_DIR}/korbit-windows-${STAMP}.exe"
+RUNTIME_URL_PATH="${ROOT_DIR}/apps/korbit-desktop/src/runtime-url.txt"
 
 mkdir -p "${OUTPUT_DIR}"
 
@@ -39,6 +40,8 @@ if [[ ! -f "${ROOT_DIR}/apps/korbit-desktop/package.json" ]]; then
   echo "Desktop app sources are missing at ${ROOT_DIR}/apps/korbit-desktop" >&2
   exit 1
 fi
+
+printf '%s\n' "${APP_URL}" > "${RUNTIME_URL_PATH}"
 
 if command -v docker >/dev/null 2>&1; then
   docker run --rm \
