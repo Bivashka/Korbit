@@ -1,4 +1,4 @@
-import { IsIn, IsObject, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString } from 'class-validator';
 
 export class CallOfferDto {
   @IsString()
@@ -9,4 +9,8 @@ export class CallOfferDto {
 
   @IsObject()
   sdp!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsBoolean()
+  renegotiate?: boolean;
 }

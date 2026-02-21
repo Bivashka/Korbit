@@ -299,17 +299,20 @@ export class RealtimeGateway
       senderId: user.sub,
       type: body.type,
       sdp: body.sdp,
+      renegotiate: Boolean(body.renegotiate),
       at: new Date().toISOString(),
     };
 
-    this.pendingCallOffers.set(body.chatId, {
-      chatId: body.chatId,
-      senderId: user.sub,
-      type: body.type,
-      sdp: body.sdp,
-      createdAt: payload.at,
-      expiresAt: Date.now() + 75_000,
-    });
+    if (!body.renegotiate) {
+      this.pendingCallOffers.set(body.chatId, {
+        chatId: body.chatId,
+        senderId: user.sub,
+        type: body.type,
+        sdp: body.sdp,
+        createdAt: payload.at,
+        expiresAt: Date.now() + 75_000,
+      });
+    }
 
     client.to(this.chatRoom(body.chatId)).emit('call_offer', payload);
     return { ok: true };
@@ -326,12 +329,15 @@ export class RealtimeGateway
       throw new WsException('Нет доступа к чату');
     }
 
-    this.pendingCallOffers.delete(body.chatId);
+    if (!body.renegotiate) {
+      this.pendingCallOffers.delete(body.chatId);
+    }
 
     const payload = {
       chatId: body.chatId,
       senderId: user.sub,
       sdp: body.sdp,
+      renegotiate: Boolean(body.renegotiate),
       at: new Date().toISOString(),
     };
     client.to(this.chatRoom(body.chatId)).emit('call_answer', payload);

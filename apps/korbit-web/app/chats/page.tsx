@@ -40,12 +40,14 @@ type CallOfferEvent = {
   senderId: string;
   sdp: RTCSessionDescriptionInit;
   type: CallType;
+  renegotiate?: boolean;
 };
 
 type CallAnswerEvent = {
   chatId: string;
   senderId: string;
   sdp: RTCSessionDescriptionInit;
+  renegotiate?: boolean;
 };
 
 type IceCandidateEvent = {
@@ -76,6 +78,8 @@ export default function ChatsPage() {
   const callToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnlockedRef = useRef(false);
+  const messageToneAudioRef = useRef<HTMLAudioElement | null>(null);
+  const callToneAudioRef = useRef<HTMLAudioElement | null>(null);
   const chatsRef = useRef<ChatItem[]>([]);
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const cameraTrackBeforeShareRef = useRef<MediaStreamTrack | null>(null);
@@ -87,9 +91,12 @@ export default function ChatsPage() {
   const currentCallChatIdRef = useRef<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
+  const inCallRef = useRef(false);
+  const callTypeRef = useRef<CallType | null>(null);
 
   const [me, setMe] = useState<UserProfile | null>(null);
   const [chats, setChats] = useState<ChatItem[]>([]);
@@ -238,15 +245,49 @@ export default function ChatsPage() {
     const gain = context.createGain();
     const now = context.currentTime;
 
-    oscillator.frequency.value = kind === 'call' ? 910 : 640;
+    oscillator.frequency.value = kind === 'call' ? 980 : 760;
+    oscillator.type = 'sine';
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.075, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+    gain.gain.exponentialRampToValueAtTime(kind === 'call' ? 0.14 : 0.11, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + (kind === 'call' ? 0.3 : 0.2));
 
     oscillator.connect(gain);
     gain.connect(context.destination);
     oscillator.start(now);
-    oscillator.stop(now + 0.24);
+    oscillator.stop(now + (kind === 'call' ? 0.32 : 0.22));
+
+    if (kind === 'message') {
+      const second = context.createOscillator();
+      const secondGain = context.createGain();
+      second.frequency.value = 920;
+      second.type = 'sine';
+      secondGain.gain.setValueAtTime(0.0001, now + 0.1);
+      secondGain.gain.exponentialRampToValueAtTime(0.08, now + 0.12);
+      secondGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+      second.connect(secondGain);
+      secondGain.connect(context.destination);
+      second.start(now + 0.1);
+      second.stop(now + 0.22);
+    }
+  }
+
+  function playFallbackTone(kind: 'message' | 'call') {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const template =
+      kind === 'call' ? callToneAudioRef.current : messageToneAudioRef.current;
+    if (!template) {
+      return;
+    }
+    try {
+      const tone = template.cloneNode(true) as HTMLAudioElement;
+      tone.volume = kind === 'call' ? 0.95 : 0.8;
+      tone.currentTime = 0;
+      void tone.play().catch(() => undefined);
+    } catch {
+      // ignore fallback tone errors
+    }
   }
 
   function playTone(kind: 'message' | 'call') {
@@ -254,7 +295,10 @@ export default function ChatsPage() {
       return;
     }
 
-    const AudioContextClass = window.AudioContext;
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AudioContextClass) {
       return;
     }
@@ -263,16 +307,17 @@ export default function ChatsPage() {
     audioContextRef.current = context;
 
     if (context.state === 'suspended') {
-      if (!audioUnlockedRef.current) {
-        return;
-      }
       void context
         .resume()
         .then(() => emitTone(context, kind))
-        .catch(() => undefined);
+        .catch(() => playFallbackTone(kind));
       return;
     }
-    emitTone(context, kind);
+    try {
+      emitTone(context, kind);
+    } catch {
+      playFallbackTone(kind);
+    }
   }
 
   function startCallTone() {
@@ -411,12 +456,36 @@ export default function ChatsPage() {
   }, [inCall, callType]);
 
   useEffect(() => {
+    inCallRef.current = inCall;
+  }, [inCall]);
+
+  useEffect(() => {
+    callTypeRef.current = callType;
+  }, [callType]);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       return;
     }
     if (Notification.permission === 'default') {
       void Notification.requestPermission().catch(() => undefined);
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof Audio === 'undefined') {
+      return;
+    }
+    const messageTone = new Audio('/tones/message.wav');
+    messageTone.preload = 'auto';
+    const callTone = new Audio('/tones/call.wav');
+    callTone.preload = 'auto';
+    messageToneAudioRef.current = messageTone;
+    callToneAudioRef.current = callTone;
+    return () => {
+      messageToneAudioRef.current = null;
+      callToneAudioRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -473,8 +542,16 @@ export default function ChatsPage() {
     }
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      remoteVideoRef.current.muted = true;
       if (remoteStreamRef.current) {
         void remoteVideoRef.current.play().catch(() => undefined);
+      }
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStreamRef.current;
+      remoteAudioRef.current.muted = false;
+      if (remoteStreamRef.current) {
+        void remoteAudioRef.current.play().catch(() => undefined);
       }
     }
   }
@@ -524,6 +601,66 @@ export default function ChatsPage() {
       } catch {
         setCallInfo('Ошибка ICE-кандидата');
       }
+    }
+  }
+
+  async function emitCallOffer(chatId: string, type: CallType, renegotiate = false) {
+    const connection = peerConnectionRef.current;
+    const socket = socketRef.current;
+    if (!connection || !socket) {
+      return;
+    }
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    socket.emit('call_offer', {
+      chatId,
+      sdp: offer,
+      type,
+      renegotiate,
+    });
+  }
+
+  async function acceptRemoteOffer(event: CallOfferEvent) {
+    const connection = peerConnectionRef.current;
+    const socket = socketRef.current;
+    if (!connection || !socket) {
+      return;
+    }
+
+    if (connection.signalingState !== 'stable') {
+      try {
+        await connection.setLocalDescription({ type: 'rollback' });
+      } catch {
+        // ignore rollback errors and continue with best effort
+      }
+    }
+
+    await connection.setRemoteDescription(new RTCSessionDescription(event.sdp));
+    await flushPendingIceCandidates();
+    const answer = await connection.createAnswer();
+    await connection.setLocalDescription(answer);
+    socket.emit('call_answer', {
+      chatId: event.chatId,
+      sdp: answer,
+      renegotiate: true,
+    });
+  }
+
+  async function renegotiateActiveCall(reason: string) {
+    const chatId = currentCallChatIdRef.current;
+    const connection = peerConnectionRef.current;
+    if (!chatId || !connection || !socketRef.current) {
+      return;
+    }
+    if (connection.signalingState !== 'stable') {
+      return;
+    }
+
+    try {
+      await emitCallOffer(chatId, callTypeRef.current ?? 'audio', true);
+      setCallInfo(`Обновление звонка: ${reason}`);
+    } catch {
+      setCallInfo('Не удалось обновить медиапоток звонка');
     }
   }
 
@@ -739,6 +876,21 @@ export default function ChatsPage() {
       if (event.senderId === me?.id) {
         return;
       }
+
+      const isCurrentCall =
+        inCallRef.current &&
+        currentCallChatIdRef.current === event.chatId &&
+        Boolean(peerConnectionRef.current);
+      if (event.renegotiate || isCurrentCall) {
+        if (!isCurrentCall) {
+          return;
+        }
+        void acceptRemoteOffer(event).catch(() => {
+          setCallInfo('Не удалось обновить звонок');
+        });
+        return;
+      }
+
       pendingIceCandidatesRef.current = [];
       setIncomingCall(event);
       incomingCallRef.current = event;
@@ -763,6 +915,10 @@ export default function ChatsPage() {
           new RTCSessionDescription(event.sdp),
         );
         await flushPendingIceCandidates();
+        if (event.renegotiate) {
+          setCallInfo('Медиапоток звонка обновлён');
+          return;
+        }
         clearCallTone();
         setInCall(true);
         setCallInfo('Звонок установлен');
@@ -1351,14 +1507,7 @@ export default function ChatsPage() {
         connection.addTrack(track, media);
       }
 
-      const offer = await connection.createOffer();
-      await connection.setLocalDescription(offer);
-
-      socketRef.current.emit('call_offer', {
-        chatId: activeChatId,
-        sdp: offer,
-        type,
-      });
+      await emitCallOffer(activeChatId, type, false);
 
       setCallType(type);
       setInCall(true);
@@ -1399,6 +1548,7 @@ export default function ChatsPage() {
       socketRef.current.emit('call_answer', {
         chatId: incomingCall.chatId,
         sdp: answer,
+        renegotiate: false,
       });
 
       setCallType(incomingCall.type);
@@ -1475,6 +1625,7 @@ export default function ChatsPage() {
           await videoSender.replaceTrack(cameraTrack);
         } else {
           connection.addTrack(cameraTrack, stream);
+          await renegotiateActiveCall('камера');
         }
         cameraTrackBeforeShareRef.current = cameraTrack;
         setCallType('video');
@@ -1578,6 +1729,7 @@ export default function ChatsPage() {
         await videoSender.replaceTrack(displayTrack);
       } else {
         connection.addTrack(displayTrack, stream);
+        await renegotiateActiveCall('демонстрация экрана');
       }
 
       if (currentCameraTrack) {
@@ -2113,28 +2265,37 @@ export default function ChatsPage() {
                 {callInfo ? <p className="muted">{callInfo}</p> : null}
 
                 {inCall ? (
-                  <div className="video-grid">
-                    <figure className="video-tile">
-                      <video ref={remoteVideoRef} autoPlay playsInline className="video-box" />
-                      <figcaption className="video-label">
-                        {activeChat.peer?.displayName ||
-                          activeChat.peer?.username ||
-                          'Собеседник'}
-                      </figcaption>
-                    </figure>
-                    <figure className="video-tile">
-                      <video
-                        ref={localVideoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="video-box"
-                      />
-                      <figcaption className="video-label">
-                        {me?.displayName || me?.username || 'Вы'}
-                      </figcaption>
-                    </figure>
-                  </div>
+                  <>
+                    <audio ref={remoteAudioRef} autoPlay playsInline />
+                    <div className="video-grid">
+                      <figure className="video-tile">
+                        <video
+                          ref={remoteVideoRef}
+                          autoPlay
+                          muted
+                          playsInline
+                          className="video-box"
+                        />
+                        <figcaption className="video-label">
+                          {activeChat.peer?.displayName ||
+                            activeChat.peer?.username ||
+                            'Собеседник'}
+                        </figcaption>
+                      </figure>
+                      <figure className="video-tile">
+                        <video
+                          ref={localVideoRef}
+                          autoPlay
+                          muted
+                          playsInline
+                          className="video-box"
+                        />
+                        <figcaption className="video-label">
+                          {me?.displayName || me?.username || 'Вы'}
+                        </figcaption>
+                      </figure>
+                    </div>
+                  </>
                 ) : null}
               </section>
             )}
