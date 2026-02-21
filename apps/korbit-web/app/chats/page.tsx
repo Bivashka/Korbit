@@ -2375,7 +2375,7 @@ export default function ChatsPage() {
     if (attachment.mimeType.startsWith('audio/')) {
       return attachment.fileName.startsWith('voice-message-')
         ? 'Голосовое'
-        : 'РђСѓРґРёРѕ';
+        : 'Аудио';
     }
     if (attachment.mimeType.startsWith('video/')) {
       return attachment.fileName.startsWith('video-note-') ? 'Кружок' : 'Видео';
@@ -2643,14 +2643,14 @@ export default function ChatsPage() {
                 onClick={() => void onTriggerAdminBuild('windows')}
                 disabled={Boolean(adminBuildTriggering)}
               >
-                {adminBuildTriggering === 'windows' ? 'РЎР±РѕСЂРєР°...' : 'Build Windows'}
+                {adminBuildTriggering === 'windows' ? 'Сборка...' : 'Build Windows'}
               </button>
               <button
                 type="button"
                 onClick={() => void onTriggerAdminBuild('android')}
                 disabled={Boolean(adminBuildTriggering)}
               >
-                {adminBuildTriggering === 'android' ? 'РЎР±РѕСЂРєР°...' : 'Build Android'}
+                {adminBuildTriggering === 'android' ? 'Сборка...' : 'Build Android'}
               </button>
             </div>
 
@@ -3186,7 +3186,7 @@ export default function ChatsPage() {
                 </div>
                 <div className="composer-context-actions">
                   <label className="forward-target-field">
-                    <span className="muted">РљСѓРґР°</span>
+                    <span className="muted">Куда</span>
                     <select
                       className="forward-target-select"
                       value={forwardTargetChatId ?? ''}
@@ -3252,7 +3252,7 @@ export default function ChatsPage() {
                   onClick={() => onStartRecording('video')}
                   disabled={uploading || Boolean(recordingMode)}
                 >
-                  РљСЂСѓР¶РѕРє
+                  Кружок
                 </button>
                 {recordingMode ? (
                   <>
@@ -3421,7 +3421,6 @@ export default function ChatsPage() {
     </main>
   );
 }
-
 
 
 
