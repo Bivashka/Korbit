@@ -133,7 +133,9 @@ export default function ChatsPage() {
   const [newChatMembers, setNewChatMembers] = useState('');
   const [newChannelPublic, setNewChannelPublic] = useState(false);
   const [newChannelUsername, setNewChannelUsername] = useState('');
-  const [chatListSearch, setChatListSearch] = useState('');
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [createPanelOpen, setCreatePanelOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creatingChat, setCreatingChat] = useState(false);
   const [sending, setSending] = useState(false);
@@ -178,6 +180,7 @@ export default function ChatsPage() {
   const [callInfo, setCallInfo] = useState<string | null>(null);
   const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [messageSearchOpen, setMessageSearchOpen] = useState(false);
   const [pendingRecording, setPendingRecording] = useState<{
     mode: RecordingMode;
     blob: Blob;
@@ -187,7 +190,9 @@ export default function ChatsPage() {
   } | null>(null);
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'navy'>('dark');
   const [nameAliases, setNameAliases] = useState<Record<string, string>>({});
-  const [publicChannelQuery, setPublicChannelQuery] = useState('');
+  const [lastSeenByUser, setLastSeenByUser] = useState<Record<string, string>>({});
+  const [peerProfileOpen, setPeerProfileOpen] = useState(false);
+  const [peerAliasInput, setPeerAliasInput] = useState('');
   const [publicChannelResults, setPublicChannelResults] = useState<PublicChannelItem[]>([]);
   const [publicChannelSearching, setPublicChannelSearching] = useState(false);
   const [joiningPublicChannelUsername, setJoiningPublicChannelUsername] = useState<
@@ -223,17 +228,6 @@ export default function ChatsPage() {
     }
     return messages.findIndex((item) => item.id === activeChat.peerLastReadMessageId);
   }, [activeChat?.peerLastReadMessageId, messages]);
-  const ownUnreadForPeerCount = useMemo(() => {
-    if (!me || !activeChat || activeChat.type !== 'DIRECT') {
-      return 0;
-    }
-    return messages.reduce((count, item, index) => {
-      if (item.senderId !== me.id || item.isDeleted) {
-        return count;
-      }
-      return index > peerReadCutoffIndex ? count + 1 : count;
-    }, 0);
-  }, [activeChat, me, messages, peerReadCutoffIndex]);
   const ownMessagesReadByPeer = useMemo(() => {
     const read = new Set<string>();
     if (!me || !activeChat || activeChat.type !== 'DIRECT' || peerReadCutoffIndex < 0) {
@@ -249,9 +243,9 @@ export default function ChatsPage() {
   }, [activeChat, me, messages, peerReadCutoffIndex]);
   const showSidebarPanel = !isMobileLayout || !activeChatId;
   const showChatPanel = !isMobileLayout || Boolean(activeChatId);
-  const normalizedChatListSearch = chatListSearch.trim().toLowerCase();
+  const normalizedSidebarSearch = sidebarSearch.trim().toLowerCase();
   const filteredChats = useMemo(() => {
-    if (!normalizedChatListSearch) {
+    if (!normalizedSidebarSearch) {
       return chats;
     }
 
@@ -266,9 +260,9 @@ export default function ChatsPage() {
       const preview = chat.lastMessage?.content || '';
       const username = chat.peer?.username || chat.username || '';
       const haystack = `${title} ${preview} ${username}`.toLowerCase();
-      return haystack.includes(normalizedChatListSearch);
+      return haystack.includes(normalizedSidebarSearch);
     });
-  }, [chats, normalizedChatListSearch, nameAliases]);
+  }, [chats, normalizedSidebarSearch, nameAliases]);
   const canManageMembers = Boolean(
     me &&
       activeChat &&
@@ -281,17 +275,34 @@ export default function ChatsPage() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
       return false;
     }
-    return (
-      window.isSecureContext &&
-      Boolean(
-        navigator.mediaDevices &&
-          typeof navigator.mediaDevices.getUserMedia === 'function',
-      )
+    const mediaSupported = Boolean(
+      navigator.mediaDevices &&
+        typeof navigator.mediaDevices.getUserMedia === 'function',
     );
+    if (!mediaSupported) {
+      return false;
+    }
+    const capacitor = (
+      window as Window & {
+        Capacitor?: { isNativePlatform?: () => boolean };
+      }
+    ).Capacitor;
+    if (capacitor?.isNativePlatform?.() || window.location.protocol === 'capacitor:') {
+      return true;
+    }
+    return window.isSecureContext;
   }
 
   function toFriendlyMediaError(error: unknown) {
-    if (typeof window !== 'undefined' && !window.isSecureContext) {
+    const isNativeApp =
+      typeof window !== 'undefined' &&
+      ((
+        window as Window & {
+          Capacitor?: { isNativePlatform?: () => boolean };
+        }
+      ).Capacitor?.isNativePlatform?.() ||
+        window.location.protocol === 'capacitor:');
+    if (typeof window !== 'undefined' && !window.isSecureContext && !isNativeApp) {
       return 'Звонки доступны только по HTTPS. Открой сайт по защищённому адресу.';
     }
 
@@ -309,7 +320,7 @@ export default function ChatsPage() {
         : '';
 
     if (errorName === 'NotAllowedError') {
-      return 'Доступ к микрофону/камере запрещён. Разреши доступ в браузере.';
+      return 'Доступ к микрофону/камере запрещен. Разреши доступ в приложении.';
     }
     if (errorName === 'NotFoundError') {
       return 'Микрофон или камера не найдены на устройстве.';
@@ -439,7 +450,7 @@ export default function ChatsPage() {
   async function requestLocalMedia(type: CallType) {
     if (!canUseMediaDevices()) {
       throw new Error(
-        'Звонки доступны только по HTTPS и при разрешённом доступе к устройствам.',
+        'Звонки доступны при разрешенном доступе к микрофону и камере.',
       );
     }
 
@@ -609,10 +620,47 @@ export default function ChatsPage() {
     setSearchInput('');
     setSearchResults([]);
     setSearchExecuted(false);
+    setMessageSearchOpen(false);
     setHighlightedMessageId(null);
     setContextMenu(null);
+    setPeerProfileOpen(false);
     clearPendingRecording();
   }, [activeChatId]);
+
+  useEffect(() => {
+    const query = sidebarSearch.trim();
+    if (!query) {
+      setPublicChannelResults([]);
+      setPublicChannelSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setPublicChannelSearching(true);
+      void searchPublicChannels(query, 16)
+        .then((items) => {
+          if (!cancelled) {
+            setPublicChannelResults(items);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setPublicChannelResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setPublicChannelSearching(false);
+          }
+        });
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [sidebarSearch]);
 
   useEffect(() => {
     if (!activeChatId) {
@@ -688,28 +736,6 @@ export default function ChatsPage() {
   }, []);
 
   useEffect(() => {
-    if (!isMobileLayout || mediaPermissionPrefetchedRef.current) {
-      return;
-    }
-    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
-      return;
-    }
-    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      return;
-    }
-    mediaPermissionPrefetchedRef.current = true;
-    void navigator.mediaDevices
-      .getUserMedia({
-        audio: true,
-        video: true,
-      })
-      .then((stream) => {
-        stream.getTracks().forEach((track) => track.stop());
-      })
-      .catch(() => undefined);
-  }, [isMobileLayout]);
-
-  useEffect(() => {
     if (typeof window === 'undefined' || typeof Audio === 'undefined') {
       return;
     }
@@ -734,6 +760,30 @@ export default function ChatsPage() {
       if (audioContextRef.current?.state === 'suspended') {
         void audioContextRef.current.resume().catch(() => undefined);
       }
+      if (
+        isMobileLayout &&
+        !mediaPermissionPrefetchedRef.current &&
+        (window.isSecureContext ||
+          (
+            window as Window & {
+              Capacitor?: { isNativePlatform?: () => boolean };
+            }
+          ).Capacitor?.isNativePlatform?.()) &&
+        navigator.mediaDevices?.getUserMedia
+      ) {
+        mediaPermissionPrefetchedRef.current = true;
+        void navigator.mediaDevices
+          .getUserMedia({
+            audio: true,
+            video: true,
+          })
+          .then((stream) => {
+            stream.getTracks().forEach((track) => track.stop());
+          })
+          .catch(() => {
+            mediaPermissionPrefetchedRef.current = false;
+          });
+      }
     };
 
     window.addEventListener('pointerdown', unlockAudio, { passive: true });
@@ -745,17 +795,22 @@ export default function ChatsPage() {
       window.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('touchstart', unlockAudio);
     };
-  }, []);
+  }, [isMobileLayout]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    const onWindowClick = () => setContextMenu(null);
+    const onWindowClick = () => {
+      setContextMenu(null);
+      setAccountMenuOpen(false);
+    };
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setContextMenu(null);
+        setAccountMenuOpen(false);
+        setPeerProfileOpen(false);
       }
     };
 
@@ -984,6 +1039,11 @@ export default function ChatsPage() {
     socket.on('connect', () => {
       if (me) {
         setPresence((previous) => ({ ...previous, [me.id]: 'online' }));
+        setLastSeenByUser((previous) => {
+          const next = { ...previous };
+          delete next[me.id];
+          return next;
+        });
       }
     });
 
@@ -995,6 +1055,17 @@ export default function ChatsPage() {
           next[item.userId] = item.status;
         }
         setPresence((previous) => ({ ...previous, ...next }));
+        setLastSeenByUser((previous) => {
+          const nextSeen = { ...previous };
+          for (const item of snapshot) {
+            if (item.status === 'online') {
+              delete nextSeen[item.userId];
+            } else if (!nextSeen[item.userId]) {
+              nextSeen[item.userId] = '';
+            }
+          }
+          return nextSeen;
+        });
       },
     );
 
@@ -1005,6 +1076,15 @@ export default function ChatsPage() {
           ...previous,
           [event.userId]: event.status,
         }));
+        setLastSeenByUser((previous) => {
+          const next = { ...previous };
+          if (event.status === 'online') {
+            delete next[event.userId];
+          } else {
+            next[event.userId] = new Date().toISOString();
+          }
+          return next;
+        });
       },
     );
 
@@ -1318,28 +1398,6 @@ export default function ChatsPage() {
     );
   }
 
-  async function onSearchPublicChannels(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    const query = publicChannelQuery.trim();
-    if (!query) {
-      setPublicChannelResults([]);
-      return;
-    }
-
-    setPublicChannelSearching(true);
-    try {
-      const found = await searchPublicChannels(query, 20);
-      setPublicChannelResults(found);
-    } catch (rawError) {
-      setError(
-        rawError instanceof Error ? rawError.message : 'Ошибка поиска публичных каналов',
-      );
-    } finally {
-      setPublicChannelSearching(false);
-    }
-  }
-
   async function onJoinPublicChannel(username: string) {
     const normalized = username.trim().replace(/^@+/, '').toLowerCase();
     if (!normalized) {
@@ -1478,6 +1536,7 @@ export default function ChatsPage() {
       setNewChannelPublic(false);
       setNewChannelUsername('');
       setNewChatType('DIRECT');
+      setCreatePanelOpen(false);
     } catch (rawError) {
       setError(rawError instanceof Error ? rawError.message : 'Ошибка создания чата');
     } finally {
@@ -2381,13 +2440,16 @@ export default function ChatsPage() {
 
   function formatStatus(userId?: string | null) {
     if (!userId) {
-      return 'не в сети';
+      return 'был(а) недавно';
     }
-    return presence[userId] === 'online' ? 'в сети' : 'не в сети';
-  }
-
-  function roleLabel(role: 'USER' | 'ADMIN') {
-    return role === 'ADMIN' ? 'админ' : 'пользователь';
+    if (presence[userId] === 'online') {
+      return 'в сети';
+    }
+    const rawLastSeen = lastSeenByUser[userId];
+    if (!rawLastSeen) {
+      return 'был(а) недавно';
+    }
+    return `был(а) в сети ${new Date(rawLastSeen).toLocaleString()}`;
   }
 
   function resolveAlias(userId: string | null | undefined, fallback: string) {
@@ -2405,19 +2467,19 @@ export default function ChatsPage() {
     }
   }
 
-  function onRenamePeer() {
+  function onOpenPeerProfile() {
     if (!activeChat?.peer?.id) {
       return;
     }
-    const current = nameAliases[activeChat.peer.id] ?? '';
-    const raw = window.prompt(
-      'Локальное имя для этого контакта (видно только вам)',
-      current,
-    );
-    if (raw === null) {
+    setPeerAliasInput(nameAliases[activeChat.peer.id] ?? '');
+    setPeerProfileOpen(true);
+  }
+
+  function onSavePeerAlias() {
+    if (!activeChat?.peer?.id) {
       return;
     }
-    const nextValue = raw.trim();
+    const nextValue = peerAliasInput.trim();
     const nextAliases = { ...nameAliases };
     if (nextValue) {
       nextAliases[activeChat.peer.id] = nextValue;
@@ -2425,10 +2487,22 @@ export default function ChatsPage() {
       delete nextAliases[activeChat.peer.id];
     }
     persistAliases(nextAliases);
+    setPeerProfileOpen(false);
+  }
+
+  function onResetPeerAlias() {
+    if (!activeChat?.peer?.id) {
+      return;
+    }
+    const nextAliases = { ...nameAliases };
+    delete nextAliases[activeChat.peer.id];
+    persistAliases(nextAliases);
+    setPeerAliasInput('');
   }
 
   function onSelectChat(chatId: string) {
     setActiveChatId(chatId);
+    setAccountMenuOpen(false);
   }
 
   function onBackToChatList() {
@@ -2441,10 +2515,12 @@ export default function ChatsPage() {
     setSearchInput('');
     setSearchResults([]);
     setSearchExecuted(false);
+    setMessageSearchOpen(false);
     setHighlightedMessageId(null);
     setContextMenu(null);
     setChatMembers(null);
     setMemberUsernameInput('');
+    setPeerProfileOpen(false);
   }
 
   function buildTargetLabel(target: BuildTarget) {
@@ -2687,95 +2763,133 @@ export default function ChatsPage() {
                   <span className="global-unread-badge">{totalUnreadCount}</span>
                 ) : null}
               </div>
-              {me ? (
-                <p className="muted">
-                  {me.displayName || me.username} ({roleLabel(me.role)})
-                </p>
-              ) : null}
             </div>
           </div>
           <div className="sidebar-header-actions">
             <button
-              onClick={() => router.push('/profile')}
               type="button"
-              className="sidebar-logout"
+              className="account-avatar-button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setAccountMenuOpen((previous) => !previous);
+              }}
             >
-              Профиль
+              {me?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={me.avatarUrl} alt="Мой профиль" className="account-avatar-image" />
+              ) : (
+                <span>{avatarLetter(me?.displayName || me?.username || 'K')}</span>
+              )}
             </button>
-            <button onClick={onLogout} type="button" className="sidebar-logout">
-              Выйти
-            </button>
+            {accountMenuOpen ? (
+              <div className="account-menu" onClick={(event) => event.stopPropagation()}>
+                <strong>{me?.displayName || me?.username || 'Профиль'}</strong>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    router.push('/profile');
+                  }}
+                >
+                  Профиль
+                </button>
+                <button
+                  type="button"
+                  className="link-button danger-link"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    void onLogout();
+                  }}
+                >
+                  Выйти
+                </button>
+              </div>
+            ) : null}
           </div>
         </header>
 
-        <form onSubmit={onCreateChat} className="new-chat-form">
-          <select
-            value={newChatType}
-            onChange={(event) =>
-              setNewChatType(event.target.value as 'DIRECT' | 'GROUP' | 'CHANNEL')
-            }
-            className="new-chat-mode"
+        <div className="sidebar-primary-actions">
+          <button
+            type="button"
+            className="create-toggle-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setCreatePanelOpen((previous) => !previous);
+            }}
           >
-            <option value="DIRECT">Личный чат</option>
-            <option value="GROUP">Группа</option>
-            <option value="CHANNEL">Канал</option>
-          </select>
-          {newChatType === 'DIRECT' ? (
-            <input
-              value={newChatUsername}
-              onChange={(event) => setNewChatUsername(event.target.value)}
-              placeholder="Логин пользователя"
-            />
-          ) : (
-            <>
-              <input
-                value={newChatTitle}
-                onChange={(event) => setNewChatTitle(event.target.value)}
-                placeholder={newChatType === 'GROUP' ? 'Название группы' : 'Название канала'}
-              />
-              <input
-                value={newChatMembers}
-                onChange={(event) => setNewChatMembers(event.target.value)}
-                placeholder="Участники: логин1, логин2"
-              />
-              {newChatType === 'CHANNEL' ? (
-                <>
-                  <label className="channel-public-toggle">
-                    <input
-                      type="checkbox"
-                      checked={newChannelPublic}
-                      onChange={(event) => setNewChannelPublic(event.target.checked)}
-                    />
-                    <span>Публичный канал</span>
-                  </label>
-                  {newChannelPublic ? (
-                    <input
-                      value={newChannelUsername}
-                      onChange={(event) => setNewChannelUsername(event.target.value)}
-                      placeholder="Username канала"
-                    />
-                  ) : null}
-                </>
-              ) : null}
-            </>
-          )}
-          <button type="submit" disabled={creatingChat}>
-            {creatingChat ? '...' : 'Создать'}
+            {createPanelOpen ? '✕ Закрыть' : '➕ Создать'}
           </button>
-        </form>
+        </div>
 
-        <form onSubmit={onSearchPublicChannels} className="public-channel-form">
+        {createPanelOpen ? (
+          <form onSubmit={onCreateChat} className="new-chat-form">
+            <select
+              value={newChatType}
+              onChange={(event) =>
+                setNewChatType(event.target.value as 'DIRECT' | 'GROUP' | 'CHANNEL')
+              }
+              className="new-chat-mode"
+            >
+              <option value="DIRECT">Личный чат</option>
+              <option value="GROUP">Группа</option>
+              <option value="CHANNEL">Канал</option>
+            </select>
+            {newChatType === 'DIRECT' ? (
+              <input
+                value={newChatUsername}
+                onChange={(event) => setNewChatUsername(event.target.value)}
+                placeholder="Логин пользователя"
+              />
+            ) : (
+              <>
+                <input
+                  value={newChatTitle}
+                  onChange={(event) => setNewChatTitle(event.target.value)}
+                  placeholder={newChatType === 'GROUP' ? 'Название группы' : 'Название канала'}
+                />
+                <input
+                  value={newChatMembers}
+                  onChange={(event) => setNewChatMembers(event.target.value)}
+                  placeholder="Участники: логин1, логин2"
+                />
+                {newChatType === 'CHANNEL' ? (
+                  <>
+                    <label className="channel-public-toggle">
+                      <input
+                        type="checkbox"
+                        checked={newChannelPublic}
+                        onChange={(event) => setNewChannelPublic(event.target.checked)}
+                      />
+                      <span>Публичный канал</span>
+                    </label>
+                    {newChannelPublic ? (
+                      <input
+                        value={newChannelUsername}
+                        onChange={(event) => setNewChannelUsername(event.target.value)}
+                        placeholder="Username канала"
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </>
+            )}
+            <button type="submit" disabled={creatingChat}>
+              {creatingChat ? '...' : 'Создать'}
+            </button>
+          </form>
+        ) : null}
+
+        <div className="chat-list-search">
           <input
-            value={publicChannelQuery}
-            onChange={(event) => setPublicChannelQuery(event.target.value)}
-            placeholder="Поиск публичных каналов: @username"
+            value={sidebarSearch}
+            onChange={(event) => setSidebarSearch(event.target.value)}
+            placeholder="Поиск: чаты, @каналы, эмодзи"
           />
-          <button type="submit" disabled={publicChannelSearching}>
-            {publicChannelSearching ? '...' : 'Найти каналы'}
-          </button>
-        </form>
+          {publicChannelSearching ? <small className="muted">Ищем каналы...</small> : null}
+        </div>
 
-        {publicChannelResults.length > 0 ? (
+        {sidebarSearch.trim() && publicChannelResults.length > 0 ? (
           <section className="public-channel-results">
             {publicChannelResults.map((channel) => (
               <div key={channel.id} className="public-channel-item">
@@ -2897,14 +3011,6 @@ export default function ChatsPage() {
           </section>
         ) : null}
 
-        <div className="chat-list-search">
-          <input
-            value={chatListSearch}
-            onChange={(event) => setChatListSearch(event.target.value)}
-            placeholder="Поиск по чатам"
-          />
-        </div>
-
         <div className="chat-list">
           {filteredChats.map((chat) => (
             <button
@@ -2917,7 +3023,16 @@ export default function ChatsPage() {
                 className="chat-avatar"
                 style={avatarStyle(chat.peer?.username || chat.username || chat.title || chat.id)}
               >
-                <span>{avatarLetter(chatTitle(chat))}</span>
+                {chat.peer?.avatarUrl || chat.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={chat.peer?.avatarUrl || chat.avatarUrl || ''}
+                    alt={chatTitle(chat)}
+                    className="chat-avatar-image"
+                  />
+                ) : (
+                  <span>{avatarLetter(chatTitle(chat))}</span>
+                )}
                 {chat.type === 'DIRECT' ? (
                   <i
                     className={`chat-avatar-status ${
@@ -2966,7 +3081,8 @@ export default function ChatsPage() {
                 </button>
               ) : null}
               <div className="chat-peer-head">
-                <div
+                <button
+                  type="button"
                   className="chat-peer-avatar"
                   style={avatarStyle(
                     activeChat.peer?.username ||
@@ -2974,9 +3090,24 @@ export default function ChatsPage() {
                       activeChat.title ||
                       activeChat.id,
                   )}
+                  onClick={() => {
+                    if (activeChat.peer) {
+                      onOpenPeerProfile();
+                    }
+                  }}
+                  title={activeChat.peer ? 'Профиль контакта' : ''}
                 >
-                  {avatarLetter(chatTitle(activeChat))}
-                </div>
+                  {activeChat.peer?.avatarUrl || activeChat.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={activeChat.peer?.avatarUrl || activeChat.avatarUrl || ''}
+                      alt={chatTitle(activeChat)}
+                      className="chat-peer-avatar-image"
+                    />
+                  ) : (
+                    avatarLetter(chatTitle(activeChat))
+                  )}
+                </button>
                 <div className="chat-peer-meta">
                   <h3>{chatTitle(activeChat)}</h3>
                   {activeChat.type === 'DIRECT' ? (
@@ -2990,55 +3121,65 @@ export default function ChatsPage() {
                   ) : (
                     <span className="peer-status">{chatMetaLabel(activeChat)}</span>
                   )}
-                  {activeChat.type === 'DIRECT' ? (
-                    <span
-                      className={`peer-read-counter ${
-                        ownUnreadForPeerCount > 0 ? 'pending' : ''
-                      }`}
-                    >
-                      {ownUnreadForPeerCount > 0
-                        ? `Не прочитано у собеседника: ${ownUnreadForPeerCount}`
-                        : 'Все сообщения прочитаны'}
-                    </span>
-                  ) : null}
                 </div>
               </div>
-              <form className="chat-search" onSubmit={onSearchInChat}>
-                <input
-                  value={searchInput}
-                  onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Поиск по сообщениям"
-                />
-                <button type="submit" disabled={searching}>
-                  {searching ? '...' : 'Найти'}
-                </button>
-              </form>
               <div className="call-actions">
-                {activeChat.peer ? (
-                  <button type="button" onClick={onRenamePeer}>
-                    Переименовать
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className={`emoji-action-button ${messageSearchOpen ? 'active' : ''}`}
+                  onClick={() => {
+                    setMessageSearchOpen((previous) => {
+                      if (previous) {
+                        setSearchInput('');
+                        setSearchResults([]);
+                        setSearchExecuted(false);
+                      }
+                      return !previous;
+                    });
+                  }}
+                  title="Поиск сообщений"
+                >
+                  🔎
+                </button>
                 {activeChat.type === 'DIRECT' ? (
                   <>
                     <button
                       type="button"
+                      className="emoji-action-button"
                       onClick={() => onStartCall('audio')}
                       disabled={inCall || !canUseMediaDevices()}
+                      title="Аудиозвонок"
                     >
-                      Аудио
+                      📞
                     </button>
                     <button
                       type="button"
+                      className="emoji-action-button"
                       onClick={() => onStartCall('video')}
                       disabled={inCall || !canUseMediaDevices()}
+                      title="Видеозвонок"
                     >
-                      Видео
+                      🎥
                     </button>
                   </>
                 ) : null}
               </div>
             </header>
+
+            {messageSearchOpen ? (
+              <section className="chat-search-panel">
+                <form className="chat-search" onSubmit={onSearchInChat}>
+                  <input
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder="Поиск по сообщениям (можно эмодзи)"
+                  />
+                  <button type="submit" disabled={searching}>
+                    {searching ? '...' : 'Найти'}
+                  </button>
+                </form>
+              </section>
+            ) : null}
 
             {activeChat.pinnedMessage ? (
               <section className="pinned-banner">
@@ -3062,7 +3203,7 @@ export default function ChatsPage() {
               </section>
             ) : null}
 
-            {searchExecuted ? (
+            {messageSearchOpen && searchExecuted ? (
               <section className="search-results">
                 <div className="search-results-header">
                   <strong>Результаты поиска</strong>
@@ -3587,6 +3728,60 @@ export default function ChatsPage() {
           </div>
         )}
       </section>
+
+      {peerProfileOpen && activeChat?.peer ? (
+        <div className="peer-profile-backdrop" onClick={() => setPeerProfileOpen(false)}>
+          <section className="peer-profile-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="peer-profile-head">
+              <div
+                className="peer-profile-avatar"
+                style={avatarStyle(activeChat.peer.username || activeChat.peer.id)}
+              >
+                {activeChat.peer.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={activeChat.peer.avatarUrl}
+                    alt={activeChat.peer.displayName || activeChat.peer.username}
+                    className="peer-profile-avatar-image"
+                  />
+                ) : (
+                  avatarLetter(activeChat.peer.displayName || activeChat.peer.username)
+                )}
+              </div>
+              <div>
+                <h3>{resolveAlias(activeChat.peer.id, activeChat.peer.displayName || activeChat.peer.username)}</h3>
+                <small>@{activeChat.peer.username}</small>
+                <small>{formatStatus(activeChat.peer.id)}</small>
+              </div>
+            </div>
+
+            <label>
+              Локальное имя
+              <input
+                value={peerAliasInput}
+                onChange={(event) => setPeerAliasInput(event.target.value)}
+                placeholder={activeChat.peer.displayName || activeChat.peer.username}
+              />
+            </label>
+
+            <div className="peer-profile-actions">
+              <button type="button" onClick={onSavePeerAlias}>
+                Сохранить
+              </button>
+              <button type="button" className="link-button" onClick={onResetPeerAlias}>
+                Сбросить
+              </button>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setPeerProfileOpen(false)}
+              >
+                Закрыть
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {notice ? (
         <p className={`floating-notice ${error ? 'with-error' : ''}`}>{notice}</p>

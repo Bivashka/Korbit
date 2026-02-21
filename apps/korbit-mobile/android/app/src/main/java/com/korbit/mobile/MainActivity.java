@@ -11,7 +11,6 @@ import java.util.List;
 
 public class MainActivity extends BridgeActivity {
   private static final int MEDIA_PERMISSION_REQUEST_CODE = 901;
-  private boolean mediaPermissionRequested = false;
 
   @Override
   public void onStart() {
@@ -19,11 +18,16 @@ public class MainActivity extends BridgeActivity {
     requestMediaPermissionsIfNeeded();
   }
 
+  @Override
+  public void onResume() {
+    super.onResume();
+    requestMediaPermissionsIfNeeded();
+  }
+
   private void requestMediaPermissionsIfNeeded() {
-    if (mediaPermissionRequested || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
       return;
     }
-    mediaPermissionRequested = true;
 
     String[] requiredPermissions = {
       Manifest.permission.CAMERA,

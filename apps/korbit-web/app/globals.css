@@ -221,12 +221,13 @@ button:disabled {
 .sidebar-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.66rem;
   padding: 0.3rem 0.36rem;
 }
 
 .sidebar-header-actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.34rem;
@@ -286,10 +287,67 @@ button:disabled {
   font-weight: 700;
 }
 
-.sidebar-logout {
+.sidebar-primary-actions {
+  padding: 0 0.24rem;
+}
+
+.create-toggle-button {
+  width: 100%;
   border-radius: 999px;
-  padding: 0.42rem 0.78rem;
-  font-size: 0.82rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.84rem;
+}
+
+.account-avatar-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tg-chat-border) 80%, transparent);
+  background: color-mix(in srgb, var(--tg-shell) 90%, transparent);
+  color: var(--tg-text);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-weight: 700;
+}
+
+.account-avatar-button:hover {
+  background: color-mix(in srgb, var(--tg-accent) 14%, transparent);
+}
+
+.account-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.34rem);
+  z-index: 25;
+  min-width: 180px;
+  border: 1px solid color-mix(in srgb, var(--tg-chat-border) 80%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tg-surface-elevated) 95%, transparent);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.26);
+  padding: 0.42rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.account-menu strong {
+  font-size: 0.84rem;
+  padding: 0.2rem 0.3rem;
+  color: var(--tg-muted);
+}
+
+.account-menu .link-button {
+  text-align: left;
+  padding: 0.35rem 0.45rem;
 }
 
 .new-chat-form {
@@ -324,6 +382,9 @@ button:disabled {
 
 .chat-list-search {
   padding: 0 0.24rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
 }
 
 .chat-list-search input {
@@ -499,6 +560,13 @@ button:disabled {
   font-weight: 700;
   font-size: 0.9rem;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.chat-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .chat-avatar-status {
@@ -602,6 +670,20 @@ button:disabled {
   font-weight: 700;
   font-size: 0.86rem;
   flex-shrink: 0;
+  overflow: hidden;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chat-peer-avatar:hover {
+  filter: brightness(1.04);
+}
+
+.chat-peer-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .chat-peer-meta {
@@ -628,23 +710,20 @@ button:disabled {
   color: #8397ab;
 }
 
-.peer-read-counter {
-  display: block;
-  margin-top: 0.08rem;
-  font-size: 0.72rem;
-  color: #7d8ea0;
-}
-
-.peer-read-counter.pending {
-  color: #4a5f73;
-}
-
 .chat-search {
   flex: 1;
   max-width: 580px;
   display: flex;
   gap: 0.45rem;
   align-items: center;
+}
+
+.chat-search-panel {
+  margin: 0.52rem 0.95rem 0;
+  border: 1px solid color-mix(in srgb, var(--tg-chat-border) 80%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tg-surface-elevated) 92%, transparent);
+  padding: 0.42rem 0.52rem;
 }
 
 .chat-search input {
@@ -670,10 +749,19 @@ button:disabled {
   margin-right: 0.2rem;
 }
 
-.call-actions button {
+.emoji-action-button {
+  width: 2.1rem;
+  height: 2.1rem;
   border-radius: 999px;
-  padding: 0.4rem 0.78rem;
-  font-size: 0.84rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.02rem;
+}
+
+.emoji-action-button.active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tg-accent) 44%, transparent);
 }
 
 .call-panel {
@@ -804,19 +892,6 @@ button:disabled {
 .search-result-item small {
   color: #6b7f92;
   font-size: 0.73rem;
-}
-
-.public-channel-form {
-  margin: 0 0.24rem;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.36rem;
-}
-
-.public-channel-form button {
-  border-radius: 999px;
-  padding: 0.42rem 0.76rem;
-  font-size: 0.82rem;
 }
 
 .public-channel-results {
@@ -1353,6 +1428,76 @@ button:disabled {
   padding: 1rem;
 }
 
+.peer-profile-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  background: rgba(5, 14, 26, 0.56);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.peer-profile-modal {
+  width: min(420px, 100%);
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--tg-chat-border) 84%, transparent);
+  background: color-mix(in srgb, var(--tg-surface-elevated) 96%, transparent);
+  box-shadow: 0 18px 48px rgba(8, 20, 36, 0.34);
+  padding: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.62rem;
+}
+
+.peer-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 0.62rem;
+}
+
+.peer-profile-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.peer-profile-head small {
+  display: block;
+  color: var(--tg-muted);
+  font-size: 0.78rem;
+}
+
+.peer-profile-avatar {
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tg-chat-border) 84%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-weight: 700;
+}
+
+.peer-profile-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.peer-profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.44rem;
+  flex-wrap: wrap;
+}
+
+.peer-profile-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
 .profile-page {
   min-height: 100vh;
   display: grid;
@@ -1553,8 +1698,7 @@ html[data-theme='dark'] .chat-item.active {
 
 html[data-theme='dark'] .preview,
 html[data-theme='dark'] .chat-item-time,
-html[data-theme='dark'] .peer-status.offline,
-html[data-theme='dark'] .peer-read-counter {
+html[data-theme='dark'] .peer-status.offline {
   color: #86a2bf;
 }
 
@@ -1571,7 +1715,10 @@ html[data-theme='dark'] .pinned-banner,
 html[data-theme='dark'] .recording-preview-card,
 html[data-theme='dark'] .composer-context,
 html[data-theme='dark'] .profile-card,
-html[data-theme='dark'] .member-item {
+html[data-theme='dark'] .member-item,
+html[data-theme='dark'] .account-menu,
+html[data-theme='dark'] .peer-profile-modal,
+html[data-theme='dark'] .chat-search-panel {
   background: rgba(13, 25, 40, 0.9);
   border-color: #27405c;
 }
@@ -1735,7 +1882,6 @@ html[data-theme='dark'] .floating-notice {
     max-width: none;
   }
 
-  .public-channel-form,
   .members-manage-form {
     grid-template-columns: 1fr;
   }
