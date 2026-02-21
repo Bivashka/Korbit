@@ -483,6 +483,9 @@ export default function ChatsPage() {
     const chatChanged = previousScrollChatIdRef.current !== activeChatId;
     const hasNewMessages = messages.length > previousMessageCountRef.current;
     const latestChanged = latestMessageKey !== previousLatestMessageKeyRef.current;
+    let animationFrameId: number | null = null;
+    const timeoutIds: number[] = [];
+
     if (messagesContainerRef.current && (chatChanged || hasNewMessages || latestChanged)) {
       const scrollToBottom = () => {
         const container = messagesContainerRef.current;
@@ -493,16 +496,26 @@ export default function ChatsPage() {
         messagesEndRef.current?.scrollIntoView({ block: 'end' });
       };
 
-      window.requestAnimationFrame(() => {
+      animationFrameId = window.requestAnimationFrame(() => {
         scrollToBottom();
-        window.setTimeout(scrollToBottom, 0);
-        window.setTimeout(scrollToBottom, 80);
+        for (const delay of [0, 80, 180, 360, 720]) {
+          timeoutIds.push(window.setTimeout(scrollToBottom, delay));
+        }
       });
     }
 
     previousScrollChatIdRef.current = activeChatId;
     previousMessageCountRef.current = messages.length;
     previousLatestMessageKeyRef.current = latestMessageKey;
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+      for (const timeoutId of timeoutIds) {
+        window.clearTimeout(timeoutId);
+      }
+    };
   }, [activeChatId, messages]);
 
   useEffect(() => {
