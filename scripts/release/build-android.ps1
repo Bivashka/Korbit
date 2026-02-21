@@ -15,9 +15,9 @@ try {
   $env:KORBIT_APP_URL = $appUrl
   corepack pnpm install --prod=false --no-frozen-lockfile --config.confirmModulesPurge=false
   if (-not (Test-Path (Join-Path $mobileDir "android"))) {
-    corepack pnpm --filter @korbit/korbit-mobile exec cap add android
+    corepack pnpm --filter ./apps/korbit-mobile exec cap add android
   }
-  corepack pnpm --filter @korbit/korbit-mobile exec cap sync android
+  corepack pnpm --filter ./apps/korbit-mobile exec cap sync android
 } finally {
   Pop-Location
 }

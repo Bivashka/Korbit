@@ -14,7 +14,7 @@ public class MainActivity extends BridgeActivity {
   private boolean mediaPermissionRequested = false;
 
   @Override
-  protected void onStart() {
+  public void onStart() {
     super.onStart();
     requestMediaPermissionsIfNeeded();
   }

@@ -15,7 +15,7 @@ try {
   $env:CI = "1"
   $env:KORBIT_APP_URL = $appUrl
   corepack pnpm install --prod=false --no-frozen-lockfile --config.confirmModulesPurge=false
-  corepack pnpm --filter @korbit/korbit-desktop run build:win
+  corepack pnpm --filter ./apps/korbit-desktop run build:win
 } finally {
   Pop-Location
 }

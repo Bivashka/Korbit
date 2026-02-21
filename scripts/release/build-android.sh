@@ -46,9 +46,9 @@ export CI=1
 corepack pnpm install --prod=false --no-frozen-lockfile --config.confirmModulesPurge=false
 
 if [[ ! -d "${MOBILE_DIR}/android" ]]; then
-  KORBIT_APP_URL="${APP_URL}" corepack pnpm --filter @korbit/korbit-mobile exec cap add android
+  KORBIT_APP_URL="${APP_URL}" corepack pnpm --filter ./apps/korbit-mobile exec cap add android
 fi
-KORBIT_APP_URL="${APP_URL}" corepack pnpm --filter @korbit/korbit-mobile exec cap sync android
+KORBIT_APP_URL="${APP_URL}" corepack pnpm --filter ./apps/korbit-mobile exec cap sync android
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker command is required for Android build" >&2

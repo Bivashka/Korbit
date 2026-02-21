@@ -1,5 +1,5 @@
 {
-  "name": "@korbit/korbit-desktop",
+  "name": "korbit-desktop",
   "version": "0.1.0",
   "private": true,
   "main": "src/main.js",
@@ -26,6 +26,7 @@
     ],
     "win": {
       "signAndEditExecutable": false,
+      "executableName": "Korbit Desktop",
       "target": [
         {
           "target": "portable",
@@ -35,6 +36,9 @@
         }
       ],
       "artifactName": "korbit-desktop-${version}-${arch}.${ext}"
+    },
+    "extraMetadata": {
+      "name": "korbit-desktop"
     }
   }
 }
