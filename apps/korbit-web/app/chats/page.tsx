@@ -85,6 +85,7 @@ type IncomingCall = {
 };
 
 type RecordingMode = 'audio' | 'video';
+type RecordingCameraFacingMode = 'user' | 'environment';
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
 const THEME_STORAGE_KEY = 'korbit-theme';
 const ALIASES_STORAGE_KEY = 'korbit-name-aliases';
@@ -126,6 +127,8 @@ export default function ChatsPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const recordingPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const inCallRef = useRef(false);
   const callTypeRef = useRef<CallType | null>(null);
 
@@ -188,6 +191,13 @@ export default function ChatsPage() {
   const [screenSharing, setScreenSharing] = useState(false);
   const [callInfo, setCallInfo] = useState<string | null>(null);
   const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
+  const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
+  const [recordingPreviewStream, setRecordingPreviewStream] = useState<MediaStream | null>(
+    null,
+  );
+  const [recordingCameraFacingMode, setRecordingCameraFacingMode] =
+    useState<RecordingCameraFacingMode>('user');
+  const [recordingCameraSwitching, setRecordingCameraSwitching] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [messageSearchOpen, setMessageSearchOpen] = useState(false);
   const [quickRecordMode, setQuickRecordMode] = useState<RecordingMode>('audio');
@@ -1325,6 +1335,52 @@ export default function ChatsPage() {
   }, []);
 
   useEffect(() => {
+    if (!recordingMode) {
+      recordingStartedAtRef.current = null;
+      setRecordingElapsedMs(0);
+      return;
+    }
+    if (!recordingStartedAtRef.current) {
+      recordingStartedAtRef.current = Date.now();
+    }
+    const updateElapsed = () => {
+      const startedAt = recordingStartedAtRef.current ?? Date.now();
+      setRecordingElapsedMs(Math.max(0, Date.now() - startedAt));
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 100);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [recordingMode]);
+
+  useEffect(() => {
+    const previewElement = recordingPreviewVideoRef.current;
+    if (!previewElement) {
+      return;
+    }
+    previewElement.srcObject = recordingPreviewStream;
+    if (recordingPreviewStream) {
+      previewElement.muted = true;
+      void previewElement.play().catch(() => undefined);
+    }
+    return () => {
+      previewElement.srcObject = null;
+    };
+  }, [recordingPreviewStream, recordingMode]);
+
+  useEffect(() => {
+    if (recordingMode !== 'video') {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [recordingMode]);
+
+  useEffect(() => {
     if (me?.role !== 'ADMIN') {
       setAdminBuilds({ builds: [], artifacts: [] });
       setAdminBuildsError(null);
@@ -1936,6 +1992,10 @@ export default function ChatsPage() {
       track.stop();
     }
     mediaRecorderStreamRef.current = null;
+    recordingStartedAtRef.current = null;
+    setRecordingElapsedMs(0);
+    setRecordingPreviewStream(null);
+    setRecordingCameraSwitching(false);
   }
 
   function clearPendingRecording() {
@@ -1991,9 +2051,18 @@ export default function ChatsPage() {
     }
 
     try {
+      const recordingVideoConstraint: MediaTrackConstraints | boolean =
+        mode === 'video'
+          ? {
+              facingMode:
+                recordingCameraFacingMode === 'environment'
+                  ? { ideal: 'environment' }
+                  : { ideal: 'user' },
+            }
+          : false;
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: mode === 'video',
+        video: recordingVideoConstraint,
       });
 
       const preferredTypes =
@@ -2010,6 +2079,10 @@ export default function ChatsPage() {
       mediaRecorderStreamRef.current = stream;
       mediaRecorderRef.current = recorder;
       discardRecordingOnStopRef.current = false;
+      recordingStartedAtRef.current = Date.now();
+      setRecordingElapsedMs(0);
+      setRecordingPreviewStream(mode === 'video' ? stream : null);
+      setRecordingCameraSwitching(false);
       setRecordingMode(mode);
       setError(null);
 
@@ -2062,6 +2135,53 @@ export default function ChatsPage() {
       mediaRecorderRef.current = null;
       setRecordingMode(null);
       setError(toFriendlyMediaError(rawError));
+    }
+  }
+
+  async function onFlipRecordingCamera() {
+    if (recordingMode !== 'video' || recordingCameraSwitching) {
+      return;
+    }
+    const recorderStream = mediaRecorderStreamRef.current;
+    if (!recorderStream) {
+      return;
+    }
+    const nextFacingMode: RecordingCameraFacingMode =
+      recordingCameraFacingMode === 'user' ? 'environment' : 'user';
+
+    setRecordingCameraSwitching(true);
+    setError(null);
+
+    try {
+      const switchedStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode:
+            nextFacingMode === 'environment'
+              ? { ideal: 'environment' }
+              : { ideal: 'user' },
+        },
+      });
+      const nextTrack = switchedStream.getVideoTracks()[0];
+      if (!nextTrack) {
+        for (const track of switchedStream.getTracks()) {
+          track.stop();
+        }
+        throw new Error('Не удалось получить доступ к камере');
+      }
+
+      for (const previousTrack of recorderStream.getVideoTracks()) {
+        recorderStream.removeTrack(previousTrack);
+        previousTrack.stop();
+      }
+      recorderStream.addTrack(nextTrack);
+
+      setRecordingCameraFacingMode(nextFacingMode);
+      setRecordingPreviewStream(recorderStream);
+    } catch (rawError) {
+      setError(toFriendlyMediaError(rawError));
+    } finally {
+      setRecordingCameraSwitching(false);
     }
   }
 
@@ -2610,6 +2730,15 @@ export default function ChatsPage() {
     });
   }
 
+  function formatRecordingDuration(durationMs: number) {
+    const safeDuration = Math.max(0, durationMs);
+    const totalTenths = Math.floor(safeDuration / 100);
+    const minutes = Math.floor(totalTenths / 600);
+    const seconds = Math.floor((totalTenths % 600) / 10);
+    const tenths = totalTenths % 10;
+    return `${minutes}:${String(seconds).padStart(2, '0')},${tenths}`;
+  }
+
   function formatSize(size: number) {
     if (size < 1024) {
       return `${size} ?`;
@@ -2749,9 +2878,15 @@ export default function ChatsPage() {
           }
 
           if (attachment.mimeType.startsWith('audio/')) {
+            const isVoiceMessage = attachment.fileName.startsWith('voice-message-');
             return (
               <div key={attachment.id} className="attachment-media">
-                <audio controls preload="metadata" src={attachment.url} className="audio-player" />
+                <audio
+                  controls
+                  preload="metadata"
+                  src={attachment.url}
+                  className={`audio-player ${isVoiceMessage ? 'voice-note-player' : ''}`}
+                />
               </div>
             );
           }
@@ -2764,8 +2899,11 @@ export default function ChatsPage() {
                   <div className="video-note-wrap">
                     <video
                       controls
+                      controlsList="nofullscreen nodownload noplaybackrate"
+                      disablePictureInPicture
                       preload="metadata"
                       playsInline
+                      onDoubleClick={(event) => event.preventDefault()}
                       src={attachment.url}
                       className="video-note-player"
                     />
@@ -3434,12 +3572,21 @@ export default function ChatsPage() {
                 const own = message.senderId === me?.id;
                 const deliveryLabel = messageDeliveryLabel(message);
                 const reactionsView = reactionSummary(message);
+                const firstAttachment = message.attachments?.[0];
+                const isSingleAttachmentMessage = (message.attachments?.length ?? 0) === 1;
                 const isVideoNoteOnlyMessage =
-                  message.content.trim().length === 0 &&
-                  (message.attachments?.length ?? 0) === 1 &&
+                  isSingleAttachmentMessage &&
                   Boolean(
-                    message.attachments?.[0]?.mimeType.startsWith('video/') &&
-                      message.attachments?.[0]?.fileName.startsWith('video-note-'),
+                    firstAttachment?.mimeType.startsWith('video/') &&
+                      firstAttachment?.fileName.startsWith('video-note-') &&
+                      hasAutoAttachmentCaption(message),
+                  );
+                const isVoiceNoteOnlyMessage =
+                  isSingleAttachmentMessage &&
+                  Boolean(
+                    firstAttachment?.mimeType.startsWith('audio/') &&
+                      firstAttachment?.fileName.startsWith('voice-message-') &&
+                      hasAutoAttachmentCaption(message),
                   );
                 return (
                   <article
@@ -3450,7 +3597,7 @@ export default function ChatsPage() {
                     onContextMenu={(event) => onMessageContextMenu(event, message.id)}
                     className={`message ${own ? 'own' : 'peer'} ${
                       isVideoNoteOnlyMessage ? 'video-note-message' : ''
-                    } ${
+                    } ${isVoiceNoteOnlyMessage ? 'voice-note-message' : ''} ${
                       highlightedMessageId === message.id ? 'highlighted-message' : ''
                     }`}
                   >
@@ -3666,10 +3813,10 @@ export default function ChatsPage() {
                 onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
               />
 
-              {recordingMode ? (
+              {recordingMode === 'audio' ? (
                 <div className="composer-inline-state">
                   <span className="muted">
-                    Идет запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
+                    Идет запись голосового · {formatRecordingDuration(recordingElapsedMs)}
                   </span>
                   <div className="composer-inline-actions">
                     <button type="button" onClick={() => stopRecording(true)}>
@@ -3697,8 +3844,11 @@ export default function ChatsPage() {
                     <div className="video-note-wrap">
                       <video
                         controls
+                        controlsList="nofullscreen nodownload noplaybackrate"
+                        disablePictureInPicture
                         playsInline
                         preload="metadata"
+                        onDoubleClick={(event) => event.preventDefault()}
                         src={pendingRecording.url}
                         className="video-note-player"
                       />
@@ -3708,7 +3858,7 @@ export default function ChatsPage() {
                       controls
                       preload="metadata"
                       src={pendingRecording.url}
-                      className="audio-player"
+                      className="audio-player voice-note-player"
                     />
                   )}
                   <div className="recording-preview-actions">
@@ -3834,6 +3984,69 @@ export default function ChatsPage() {
           </div>
         )}
       </section>
+
+      {recordingMode === 'video' ? (
+        <div className="video-recording-overlay">
+          <section className="video-recording-panel">
+            <header className="video-recording-head">
+              <span className="video-recording-timer">
+                <span className="video-recording-dot" />
+                {formatRecordingDuration(recordingElapsedMs)}
+              </span>
+            </header>
+            <div className="video-recording-preview-wrap">
+              <video
+                ref={recordingPreviewVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className={`video-recording-preview ${
+                  recordingCameraFacingMode === 'user' ? 'mirrored' : ''
+                }`}
+              />
+            </div>
+            <footer className="video-recording-actions">
+              <button
+                type="button"
+                className="video-recording-control ghost"
+                onClick={() => void onFlipRecordingCamera()}
+                disabled={recordingCameraSwitching}
+                title="Повернуть камеру"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M6.5 8.2A6.7 6.7 0 0 1 12 5c2 0 3.9.9 5.2 2.4"
+                    fill="none"
+                  />
+                  <path d="M18.5 5.1v3.8h-3.8" fill="none" />
+                  <path
+                    d="M17.5 15.8A6.7 6.7 0 0 1 12 19c-2 0-3.9-.9-5.2-2.4"
+                    fill="none"
+                  />
+                  <path d="M5.5 18.9v-3.8h3.8" fill="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="video-recording-control text"
+                onClick={() => stopRecording(false)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="video-recording-control send"
+                onClick={() => stopRecording(true)}
+                title="Остановить запись"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12L20 4L14.7 20L11.6 13.5L4 12Z" />
+                </svg>
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
 
       {peerProfileOpen && activeChat?.peer ? (
         <div className="peer-profile-backdrop" onClick={() => setPeerProfileOpen(false)}>

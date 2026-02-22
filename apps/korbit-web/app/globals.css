@@ -1076,6 +1076,25 @@ button:disabled {
   padding: 0.12rem 0.45rem;
 }
 
+.message.voice-note-message {
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+  max-width: 320px;
+}
+
+.message.voice-note-message::after {
+  display: none;
+}
+
+.message.voice-note-message .message-meta {
+  margin: 0.16rem auto 0;
+  color: #d8e7f5;
+  background: rgba(12, 22, 38, 0.68);
+  border-radius: 999px;
+  padding: 0.12rem 0.45rem;
+}
+
 .message p {
   margin: 0;
   line-height: 1.34;
@@ -1367,6 +1386,199 @@ button:disabled {
   gap: 0.46rem;
 }
 
+.video-recording-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(5, 12, 21, 0.74);
+  backdrop-filter: blur(9px);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.video-recording-panel {
+  width: min(540px, 100%);
+  min-height: min(88dvh, 760px);
+  border-radius: 24px;
+  border: 1px solid rgba(170, 198, 232, 0.34);
+  background:
+    radial-gradient(circle at 28% 16%, rgba(130, 170, 220, 0.2) 0, transparent 45%),
+    linear-gradient(160deg, rgba(19, 30, 47, 0.98), rgba(12, 20, 34, 0.98));
+  box-shadow: 0 24px 54px rgba(2, 8, 16, 0.62);
+  padding: 0.96rem 0.92rem calc(0.96rem + env(safe-area-inset-bottom, 0));
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: center;
+}
+
+.video-recording-head {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.video-recording-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.46rem;
+  border-radius: 999px;
+  padding: 0.32rem 0.66rem;
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #f9dfef;
+  background: rgba(12, 18, 30, 0.66);
+}
+
+.video-recording-dot {
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 999px;
+  background: #f0b4de;
+  box-shadow: 0 0 0 0 rgba(240, 180, 222, 0.44);
+  animation: recording-dot-pulse 1.25s infinite;
+}
+
+.video-recording-preview-wrap {
+  position: relative;
+  width: min(72vw, 430px);
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #03070f;
+  box-shadow:
+    0 18px 34px rgba(4, 12, 22, 0.56),
+    inset 0 0 0 1px rgba(227, 241, 255, 0.16);
+}
+
+.video-recording-preview-wrap::before {
+  content: '';
+  position: absolute;
+  top: 0.6rem;
+  left: 50%;
+  width: 2.4rem;
+  height: 0.32rem;
+  margin-left: -1.2rem;
+  border-radius: 999px;
+  background: rgba(236, 246, 255, 0.92);
+  z-index: 2;
+}
+
+.video-recording-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+.video-recording-preview.mirrored {
+  transform: scaleX(-1);
+}
+
+.video-recording-actions {
+  width: 100%;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.72rem;
+}
+
+.video-recording-control {
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.video-recording-control.ghost {
+  width: 3.24rem;
+  height: 3.24rem;
+  border-radius: 999px;
+  background: rgba(223, 237, 255, 0.16);
+  color: #e8f4ff;
+}
+
+.video-recording-control.ghost svg {
+  width: 1.52rem;
+  height: 1.52rem;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.video-recording-control.text {
+  min-width: 7.4rem;
+  background: transparent;
+  color: #efb0db;
+  font-size: 2.08rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.video-recording-control.send {
+  width: 4.6rem;
+  height: 4.6rem;
+  border-radius: 999px;
+  color: #6a2f55;
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 232, 247, 0.9), rgba(236, 179, 221, 0.96)),
+    rgba(239, 186, 224, 0.95);
+  box-shadow:
+    0 14px 32px rgba(237, 169, 216, 0.4),
+    inset 0 0 0 10px rgba(39, 15, 34, 0.24);
+}
+
+.video-recording-control.send svg {
+  width: 1.86rem;
+  height: 1.86rem;
+  fill: currentColor;
+}
+
+.video-recording-control:hover {
+  transform: none;
+}
+
+.video-recording-control:active {
+  transform: none;
+}
+
+.video-recording-control.ghost:hover {
+  background: rgba(223, 237, 255, 0.24);
+}
+
+.video-recording-control.text:hover {
+  background: transparent;
+  color: #f6c3e5;
+}
+
+.video-recording-control.send:hover {
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 232, 247, 0.9), rgba(236, 179, 221, 0.96)),
+    rgba(239, 186, 224, 0.95);
+}
+
+@keyframes recording-dot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(240, 180, 222, 0.44);
+    opacity: 0.94;
+  }
+
+  70% {
+    box-shadow: 0 0 0 11px rgba(240, 180, 222, 0);
+    opacity: 1;
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(240, 180, 222, 0);
+    opacity: 0.94;
+  }
+}
+
 .link-button {
   border: none;
   background: transparent;
@@ -1440,6 +1652,13 @@ button:disabled {
   min-width: 220px;
 }
 
+.voice-note-player {
+  min-width: 0;
+  width: min(300px, 100%);
+  border-radius: 999px;
+  background: #eef4fb;
+}
+
 .video-player {
   width: min(340px, 100%);
   border-radius: 12px;
@@ -1453,10 +1672,8 @@ button:disabled {
   height: 220px;
   border-radius: 999px;
   overflow: hidden;
-  border: 3px solid #84c4ec;
-  box-shadow:
-    0 7px 20px rgba(5, 24, 46, 0.42),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  border: none;
+  box-shadow: 0 7px 20px rgba(5, 24, 46, 0.42);
 }
 
 .video-note-wrap::after {
@@ -1814,6 +2031,11 @@ html[data-theme='dark'] .message-context-menu {
   color: var(--tg-text);
 }
 
+html[data-theme='dark'] .voice-note-player,
+html[data-theme='navy'] .voice-note-player {
+  background: rgba(10, 20, 33, 0.9);
+}
+
 html[data-theme='dark'] .message-author {
   color: #7cb8ef;
 }
@@ -1929,6 +2151,31 @@ html[data-theme='dark'] .floating-notice {
   .video-note-wrap {
     width: 200px;
     height: 200px;
+  }
+
+  .video-recording-overlay {
+    padding: 0.58rem;
+  }
+
+  .video-recording-panel {
+    width: 100%;
+    min-height: 100dvh;
+    border-radius: 18px;
+    padding-top: calc(0.72rem + env(safe-area-inset-top, 0));
+  }
+
+  .video-recording-preview-wrap {
+    width: min(86vw, 390px);
+  }
+
+  .video-recording-control.text {
+    min-width: 6.2rem;
+    font-size: 1.82rem;
+  }
+
+  .video-recording-control.send {
+    width: 4.2rem;
+    height: 4.2rem;
   }
 
   .composer-stack {
