@@ -1222,51 +1222,134 @@ button:disabled {
   backdrop-filter: blur(10px);
   box-shadow: 0 -10px 26px rgba(15, 23, 42, 0.11);
   padding-bottom: env(safe-area-inset-bottom, 0);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
-.composer-attachments,
-.composer {
+.composer-inline-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0 0.85rem;
+  border: 1px solid #c7d9ec;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  background: rgba(244, 250, 255, 0.96);
+  padding: 0.44rem 0.6rem;
+}
+
+.composer-inline-actions {
   display: flex;
   align-items: center;
   gap: 0.42rem;
   flex-wrap: wrap;
-  padding: 0.42rem 0.85rem;
+}
+
+.composer-bar {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
   border-top: 1px solid var(--tg-chat-border);
   background: rgba(251, 253, 255, 0.98);
 }
 
-.tool-button {
-  border-radius: 999px;
-  background: rgba(51, 144, 236, 0.12);
-  color: #2d669b;
-  border: 1px solid rgba(51, 144, 236, 0.24);
-  padding: 0.36rem 0.72rem;
-  font-size: 0.82rem;
+.composer-side-button,
+.composer-send-button,
+.composer-icon-button {
+  width: 52px;
+  height: 56px;
+  flex: 0 0 52px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #6c8299;
+  border: none;
+  display: grid;
+  place-items: center;
 }
 
-.tool-button:hover {
-  background: rgba(51, 144, 236, 0.18);
-  color: #275987;
+.composer-side-button {
+  width: 58px;
+  flex-basis: 58px;
+  border-right: 1px solid color-mix(in srgb, var(--tg-chat-border) 82%, transparent);
 }
 
-.composer {
-  padding-top: 0.34rem;
+.composer-send-button {
+  width: 58px;
+  flex-basis: 58px;
+  border-left: 1px solid color-mix(in srgb, var(--tg-chat-border) 82%, transparent);
+  color: var(--tg-accent);
+  background: color-mix(in srgb, var(--tg-accent) 10%, transparent);
 }
 
-.composer input {
-  border-radius: 999px;
-  padding: 0.58rem 0.95rem;
+.composer-side-button:hover,
+.composer-icon-button:hover {
+  background: color-mix(in srgb, var(--tg-accent) 8%, transparent);
 }
 
-.composer button {
-  border-radius: 999px;
-  padding: 0.5rem 0.92rem;
+.composer-send-button:hover {
+  background: color-mix(in srgb, var(--tg-accent) 18%, transparent);
+}
+
+.composer-side-button:active,
+.composer-send-button:active,
+.composer-icon-button:active {
+  transform: none;
+}
+
+.composer-side-button svg,
+.composer-send-button svg,
+.composer-icon-button svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.composer-send-button svg {
+  stroke: none;
+  fill: currentColor;
+}
+
+.composer-record-button.video-mode {
+  color: #4fb3ff;
+}
+
+.composer-input-field {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  height: 56px;
+  padding: 0 0.9rem;
+  width: 100%;
+}
+
+.composer-input-field:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.composer-right-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.composer-side-button:disabled,
+.composer-send-button:disabled,
+.composer-icon-button:disabled {
+  opacity: 0.5;
 }
 
 .recording-preview-card {
-  width: 100%;
+  margin: 0 0.85rem;
   border: 1px solid #c7d9ec;
-  border-radius: 12px;
+  border-radius: 12px 12px 0 0;
+  border-bottom: none;
   background: rgba(244, 250, 255, 0.96);
   padding: 0.48rem 0.56rem;
   display: flex;
@@ -1740,20 +1823,33 @@ html[data-theme='dark'] .message-meta-quote {
   background: rgba(48, 78, 110, 0.36);
 }
 
-html[data-theme='dark'] .composer-attachments,
-html[data-theme='dark'] .composer {
+html[data-theme='dark'] .composer-bar,
+html[data-theme='dark'] .composer-inline-state,
+html[data-theme='dark'] .recording-preview-card {
   background: rgba(10, 18, 29, 0.96);
 }
 
-html[data-theme='dark'] .tool-button {
-  background: rgba(69, 166, 255, 0.16);
-  border-color: rgba(69, 166, 255, 0.36);
-  color: #9dcbf6;
+html[data-theme='dark'] .composer-inline-state,
+html[data-theme='dark'] .recording-preview-card {
+  border-color: #27405c;
 }
 
-html[data-theme='dark'] .tool-button:hover {
-  background: rgba(69, 166, 255, 0.24);
-  color: #d3eaff;
+html[data-theme='dark'] .composer-side-button {
+  color: #93b1ce;
+  border-right-color: #213852;
+}
+
+html[data-theme='dark'] .composer-send-button {
+  border-left-color: #213852;
+}
+
+html[data-theme='dark'] .composer-icon-button {
+  color: #8ea7c3;
+}
+
+html[data-theme='dark'] .composer-side-button:hover,
+html[data-theme='dark'] .composer-icon-button:hover {
+  background: rgba(69, 166, 255, 0.13);
 }
 
 html[data-theme='dark'] .floating-error {
@@ -1839,10 +1935,16 @@ html[data-theme='dark'] .floating-notice {
     margin-top: auto;
   }
 
-  .composer-attachments,
-  .composer {
-    padding-left: 0.6rem;
-    padding-right: 0.6rem;
+  .composer-inline-state,
+  .recording-preview-card {
+    margin-left: 0.58rem;
+    margin-right: 0.58rem;
+  }
+
+  .composer-side-button,
+  .composer-send-button {
+    width: 54px;
+    flex-basis: 54px;
   }
 
   .composer-context {

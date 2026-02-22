@@ -1,6 +1,14 @@
 'use client';
 
-import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FormEvent,
+  MouseEvent,
+  PointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -105,6 +113,7 @@ export default function ChatsPage() {
   const screenTrackRef = useRef<MediaStreamTrack | null>(null);
   const cameraTrackBeforeShareRef = useRef<MediaStreamTrack | null>(null);
   const discardRecordingOnStopRef = useRef(false);
+  const recordGestureRef = useRef<{ pointerId: number; startY: number } | null>(null);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -181,6 +190,7 @@ export default function ChatsPage() {
   const [recordingMode, setRecordingMode] = useState<RecordingMode | null>(null);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [messageSearchOpen, setMessageSearchOpen] = useState(false);
+  const [quickRecordMode, setQuickRecordMode] = useState<RecordingMode>('audio');
   const [pendingRecording, setPendingRecording] = useState<{
     mode: RecordingMode;
     blob: Blob;
@@ -270,6 +280,8 @@ export default function ChatsPage() {
       (me.role === 'ADMIN' || activeChat.ownerId === me.id),
   );
   const showMembersPanel = Boolean(activeChat && activeChat.type !== 'DIRECT');
+  const composerHasText = messageInput.trim().length > 0;
+  const composerCanSend = composerHasText || Boolean(selectedFile);
 
   function canUseMediaDevices() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -1716,6 +1728,11 @@ export default function ChatsPage() {
     }
 
     const content = messageInput.trim();
+    if (!content && selectedFile) {
+      await onUploadSelectedFile();
+      return;
+    }
+
     if (!content) {
       return;
     }
@@ -1743,6 +1760,13 @@ export default function ChatsPage() {
     }
   }
 
+  function clearSelectedFile() {
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
   async function onUploadSelectedFile() {
     if (!activeChatId || !selectedFile) {
       return;
@@ -1752,10 +1776,7 @@ export default function ChatsPage() {
     try {
       const created = await uploadAttachment(activeChatId, selectedFile);
       upsertLocalMessage(created);
-      setSelectedFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      clearSelectedFile();
     } catch (rawError) {
       setError(rawError instanceof Error ? rawError.message : 'Ошибка загрузки файла');
     } finally {
@@ -2335,6 +2356,42 @@ export default function ChatsPage() {
         isTyping: false,
       });
     }, 1200);
+  }
+
+  function onRecordPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) {
+      return;
+    }
+    recordGestureRef.current = { pointerId: event.pointerId, startY: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onRecordPointerMove(event: PointerEvent<HTMLButtonElement>) {
+    const gesture = recordGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaY = event.clientY - gesture.startY;
+    if (deltaY <= -22 && quickRecordMode !== 'video') {
+      setQuickRecordMode('video');
+      showNotice('Кружок');
+      return;
+    }
+    if (deltaY >= 22 && quickRecordMode !== 'audio') {
+      setQuickRecordMode('audio');
+      showNotice('Голосовое');
+    }
+  }
+
+  function onRecordPointerEnd(event: PointerEvent<HTMLButtonElement>) {
+    const gesture = recordGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+    recordGestureRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   function chatTitle(chat: ChatItem) {
@@ -3602,42 +3659,19 @@ export default function ChatsPage() {
             ) : null}
 
             <div className="composer-stack">
-              <div className="composer-attachments">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden-file-input"
-                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                />
-                <button
-                  type="button"
-                  className="tool-button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                >
-                  Прикрепить файл
-                </button>
-                <button
-                  type="button"
-                  className="tool-button"
-                  onClick={() => onStartRecording('audio')}
-                  disabled={uploading || Boolean(recordingMode)}
-                >
-                  Голосовое
-                </button>
-                <button
-                  type="button"
-                  className="tool-button"
-                  onClick={() => onStartRecording('video')}
-                  disabled={uploading || Boolean(recordingMode)}
-                >
-                  Кружок
-                </button>
-                {recordingMode ? (
-                  <>
-                    <span className="muted">
-                      Идёт запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
-                    </span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden-file-input"
+                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+              />
+
+              {recordingMode ? (
+                <div className="composer-inline-state">
+                  <span className="muted">
+                    Идет запись {recordingMode === 'audio' ? 'голосового' : 'кружка'}
+                  </span>
+                  <div className="composer-inline-actions">
                     <button type="button" onClick={() => stopRecording(true)}>
                       Остановить
                     </button>
@@ -3648,76 +3682,148 @@ export default function ChatsPage() {
                     >
                       Отмена
                     </button>
-                  </>
-                ) : null}
-                {pendingRecording ? (
-                  <div className="recording-preview-card">
-                    <strong>
-                      {pendingRecording.mode === 'video'
-                        ? 'Кружок готов к отправке'
-                        : 'Голосовое готово к отправке'}
-                    </strong>
-                    {pendingRecording.mode === 'video' ? (
-                      <div className="video-note-wrap">
-                        <video
-                          controls
-                          playsInline
-                          preload="metadata"
-                          src={pendingRecording.url}
-                          className="video-note-player"
-                        />
-                      </div>
-                    ) : (
-                      <audio
+                  </div>
+                </div>
+              ) : null}
+
+              {pendingRecording ? (
+                <div className="recording-preview-card">
+                  <strong>
+                    {pendingRecording.mode === 'video'
+                      ? 'Кружок готов к отправке'
+                      : 'Голосовое готово к отправке'}
+                  </strong>
+                  {pendingRecording.mode === 'video' ? (
+                    <div className="video-note-wrap">
+                      <video
                         controls
+                        playsInline
                         preload="metadata"
                         src={pendingRecording.url}
-                        className="audio-player"
+                        className="video-note-player"
                       />
-                    )}
-                    <div className="recording-preview-actions">
-                      <button
-                        type="button"
-                        onClick={() => void onSendPendingRecording()}
-                        disabled={uploading}
-                      >
-                        {uploading ? 'Отправка...' : 'Отправить'}
-                      </button>
-                      <button
-                        type="button"
-                        className="link-button danger-link"
-                        onClick={clearPendingRecording}
-                        disabled={uploading}
-                      >
-                        Удалить
-                      </button>
                     </div>
-                  </div>
-                ) : null}
-                {selectedFile ? (
-                  <>
-                    <span className="muted">{selectedFile.name}</span>
-                    <button type="button" onClick={onUploadSelectedFile} disabled={uploading}>
-                      {uploading ? 'Загрузка...' : 'Отправить файл'}
+                  ) : (
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={pendingRecording.url}
+                      className="audio-player"
+                    />
+                  )}
+                  <div className="recording-preview-actions">
+                    <button
+                      type="button"
+                      onClick={() => void onSendPendingRecording()}
+                      disabled={uploading}
+                    >
+                      {uploading ? 'Отправка...' : 'Отправить'}
                     </button>
-                  </>
-                ) : null}
-              </div>
+                    <button
+                      type="button"
+                      className="link-button danger-link"
+                      onClick={clearPendingRecording}
+                      disabled={uploading}
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
-              <form onSubmit={onSendMessage} className="composer">
+              {selectedFile ? (
+                <div className="composer-inline-state">
+                  <span className="muted">{selectedFile.name}</span>
+                  <div className="composer-inline-actions">
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={clearSelectedFile}
+                      disabled={uploading}
+                    >
+                      Убрать
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <form onSubmit={onSendMessage} className="composer-bar">
+                <button
+                  type="button"
+                  className="composer-side-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || sending}
+                  title="Прикрепить файл"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M21.44 11.05L12.95 19.54a5.5 5.5 0 1 1-7.78-7.78l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.49 8.49a1.5 1.5 0 0 1-2.12-2.12l7.78-7.78"
+                      fill="none"
+                    />
+                  </svg>
+                </button>
+
                 <input
+                  className="composer-input-field"
                   value={messageInput}
                   onChange={(event) => onTyping(event.target.value)}
-                  placeholder={
-                    editingMessageId
-                      ? 'Измените сообщение...'
-                      : 'Введите сообщение...'
-                  }
-                  disabled={sending}
+                  placeholder={editingMessageId ? 'Измените сообщение...' : 'Сообщение...'}
+                  disabled={sending || uploading}
                 />
-                <button type="submit" disabled={sending || !messageInput.trim()}>
-                  {editingMessageId ? 'Сохранить' : 'Отправить'}
-                </button>
+
+                {composerCanSend ? (
+                  <button
+                    type="submit"
+                    className="composer-send-button"
+                    disabled={sending || uploading || !composerCanSend}
+                    title={selectedFile && !composerHasText ? 'Отправить файл' : 'Отправить'}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M3 11.5L20 4L14.3 20L11 13.4L3 11.5Z" />
+                    </svg>
+                  </button>
+                ) : (
+                  <div className="composer-right-actions">
+                    <button type="button" className="composer-icon-button" title="Эмодзи">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" fill="none" />
+                        <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+                        <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
+                        <path d="M8.4 14.2a4.2 4.2 0 0 0 7.2 0" fill="none" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className={`composer-icon-button composer-record-button ${
+                        quickRecordMode === 'video' ? 'video-mode' : ''
+                      }`}
+                      onPointerDown={onRecordPointerDown}
+                      onPointerMove={onRecordPointerMove}
+                      onPointerUp={onRecordPointerEnd}
+                      onPointerCancel={onRecordPointerEnd}
+                      onClick={() => void onStartRecording(quickRecordMode)}
+                      disabled={uploading || Boolean(recordingMode)}
+                      title={
+                        quickRecordMode === 'video'
+                          ? 'Кружок (свайп вниз для микрофона)'
+                          : 'Голосовое (свайп вверх для кружка)'
+                      }
+                    >
+                      {quickRecordMode === 'video' ? (
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <circle cx="12" cy="12" r="8.5" fill="none" />
+                          <circle cx="12" cy="12" r="4.2" fill="currentColor" stroke="none" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="9" y="4" width="6" height="11" rx="3" fill="none" />
+                          <path d="M6.8 11.5A5.2 5.2 0 0 0 17.2 11.5" fill="none" />
+                          <path d="M12 16.8V20" fill="none" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                )}
               </form>
             </div>
           </>
